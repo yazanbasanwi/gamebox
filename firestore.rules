@@ -1,0 +1,69 @@
+// firestore.rules
+// ============================================================
+// Firestore Security Rules for GameBox
+// ============================================================
+// Deploy with: firebase deploy --only firestore:rules
+// ============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Check if user is authenticated
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // Helper: Check if user is the document owner
+    function isOwner(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+
+    // Helper: Check if user is admin
+    function isAdmin() {
+      return isAuth() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ── Users Collection ──
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+
+      // User's game library (subcollection)
+      match /library/{gameId} {
+        allow read: if true;
+        allow write: if isOwner(userId);
+      }
+    }
+
+    // ── Reviews Collection ──
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isAuth();
+      allow update: if isAuth() && (
+        resource.data.userId == request.auth.uid || isAdmin()
+      );
+      allow delete: if isAuth() && (
+        resource.data.userId == request.auth.uid || isAdmin()
+      );
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isAuth();
+        allow delete: if isAuth() && (
+          resource.data.userId == request.auth.uid || isAdmin()
+        );
+      }
+    }
+
+    // ── Reports Collection ──
+    match /reports/{reportId} {
+      allow create: if isAuth();
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+    }
+  }
+}

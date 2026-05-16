@@ -2,50 +2,131 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
+import { Sparkles, Star, Library, ArrowRight } from "lucide-react";
 
 export default function HomePage() {
   const { currentUser } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   return (
-    <div className="page home-page">
+    <div className="home-page">
+      {/* Hero */}
       <section className="hero">
+        <div className="hero-glow" />
+        <div className="hero-line" />
         <div className="hero-content">
-          <h1>{t("welcomeTo")} <span className="accent">GameBox</span></h1>
-          <p>{t("homeSubtitle")}</p>
+          <div className="hero-badge">
+            <Sparkles size={14} />
+            <span>{lang === "ar" ? "المعيار الجديد لتتبع الألعاب" : "The new standard for game tracking"}</span>
+          </div>
+          <h1>
+            {lang === "ar" ? (
+              <>سجّل ألعابك.<br /><span className="gradient-text">اكتشف هوسك القادم.</span></>
+            ) : (
+              <>Log your plays.<br /><span className="gradient-text">Find your next obsession.</span></>
+            )}
+          </h1>
+          <p className="hero-sub">
+            {lang === "ar"
+              ? "GameBox هو المنصة المثالية للاعبين المتحمسين لتتبع مكتبتهم وكتابة مراجعات معمّقة واكتشاف العناوين الرائعة."
+              : "GameBox is the premier platform for passionate gamers to track their library, write in-depth reviews, and discover masterpiece titles through a curated community."
+            }
+          </p>
           <div className="hero-actions">
             {currentUser ? (
               <>
-                <Link to="/browse" className="btn-primary">{t("browseGames")}</Link>
-                <Link to="/feed" className="btn-secondary">{t("viewReviews")}</Link>
+                <Link to="/browse" className="btn-primary btn-lg">
+                  {t("browseGames")} <ArrowRight size={18} />
+                </Link>
+                <Link to="/feed" className="btn-secondary btn-lg">{t("viewReviews")}</Link>
               </>
             ) : (
               <>
-                <Link to="/register" className="btn-primary">{t("getStarted")}</Link>
-                <Link to="/browse" className="btn-secondary">{t("browseGames")}</Link>
+                <Link to="/register" className="btn-primary btn-lg">
+                  {lang === "ar" ? "ابدأ مجاناً" : "Get Started for Free"} <ArrowRight size={18} />
+                </Link>
+                <Link to="/browse" className="btn-secondary btn-lg">{t("browseGames")}</Link>
               </>
             )}
           </div>
         </div>
       </section>
 
-      <section className="features">
-        <div className="feature-card">
-          <span className="feature-icon">⭐</span>
-          <h3>{t("flexibleReviews")}</h3>
-          <p>{t("flexibleReviewsDesc")}</p>
-        </div>
-        <div className="feature-card">
-          <span className="feature-icon">🤖</span>
-          <h3>{t("aiRecommendations")}</h3>
-          <p>{t("aiRecommendationsDesc")}</p>
-        </div>
-        <div className="feature-card">
-          <span className="feature-icon">📚</span>
-          <h3>{t("yourGameLibrary")}</h3>
-          <p>{t("yourGameLibraryDesc")}</p>
+      {/* Features */}
+      <section className="features-section">
+        <div>
+          <div className="features-grid">
+            {/* Feature 1 */}
+            <div className="feature-card">
+              <div className="feature-icon-box">
+                <Star size={22} color="var(--accent-light)" />
+              </div>
+              <h3>{t("flexibleReviews")}</h3>
+              <p>{lang === "ar"
+                ? "لا تكتفِ بـ 7/10. قيّم الألعاب عبر القصة وأسلوب اللعب والرسومات والصوت لإعطاء المجتمع الصورة الكاملة."
+                : "Don't just give it a 7/10. Rate games across story, gameplay, visuals, and audio to give the community the full picture."
+              }</p>
+              <div className="feature-demo">
+                {["Story", "Gameplay", "Graphics", "Audio"].map((cat, i) => (
+                  <div className="feature-bar-row" key={cat}>
+                    <span>{lang === "ar" ? ["القصة","اللعب","الرسوم","الصوت"][i] : cat}</span>
+                    <div className="feature-bars">
+                      {[1,2,3,4,5].map(s => (
+                        <div key={s} className={`feature-bar ${s <= (i === 1 ? 5 : 4) ? "filled" : "empty"}`} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Feature 2 */}
+            <div className="feature-card">
+              <div className="feature-icon-box">
+                <Sparkles size={22} color="var(--accent-light)" />
+              </div>
+              <h3>{t("aiRecommendations")}</h3>
+              <p>{lang === "ar"
+                ? "يحلل محركنا الذكي مكتبتك وتقييماتك ليقترح عناوين ستحبها بالتأكيد."
+                : "Our AI engine analyzes your library, playtime, and ratings to suggest titles you're guaranteed to love."
+              }</p>
+              <div className="feature-demo" style={{ display: "flex", alignItems: "center", gap: "0.875rem" }}>
+                <div style={{ width: 48, height: 64, borderRadius: 6, background: "linear-gradient(to bottom, #6366f1, #7c3aed)", flexShrink: 0, boxShadow: "0 4px 12px rgba(0,0,0,0.4)" }} />
+                <div>
+                  <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-primary)" }}>Cybernetic Souls</div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--accent-light)", marginTop: 4 }}>98% {lang === "ar" ? "تطابق" : "Match"}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Feature 3 */}
+            <div className="feature-card">
+              <div className="feature-icon-box">
+                <Library size={22} color="var(--accent-light)" />
+              </div>
+              <h3>{t("yourGameLibrary")}</h3>
+              <p>{lang === "ar"
+                ? "تتبع كل شيء لعبته أو تلعبه أو تريد لعبه. أنشئ مجموعات مخصصة وشاركها مع الأصدقاء."
+                : "Track everything you've played, are playing, or want to play. Build custom collections and share them with friends."
+              }</p>
+              <div className="feature-demo" style={{ display: "flex", gap: -8 }}>
+                {[
+                  "linear-gradient(135deg, #059669, #34d399)",
+                  "linear-gradient(135deg, #dc2626, #fb923c)",
+                  "linear-gradient(135deg, #2563eb, #67e8f9)",
+                ].map((bg, i) => (
+                  <div key={i} style={{ width: 48, height: 64, borderRadius: 6, background: bg, marginLeft: i > 0 ? -8 : 0, border: "2px solid var(--bg-card)", boxShadow: "var(--shadow)" }} />
+                ))}
+                <div style={{ width: 48, height: 64, borderRadius: 6, background: "var(--bg-elevated)", marginLeft: -8, border: "2px solid var(--bg-card)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)" }}>+42</div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
+
+      <footer className="home-footer">
+        <p>© 2025 GameBox. {lang === "ar" ? "منصة ألعاب احترافية." : "A premium gaming editorial platform."}</p>
+      </footer>
     </div>
   );
 }

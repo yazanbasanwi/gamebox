@@ -1,42 +1,96 @@
 // src/components/pages/FeedPage.jsx
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { getLatestReviews, toggleReviewLike, getUserLibrary } from "../../services/firestoreService";
+import { getLatestReviews, toggleReviewLike, getUserLibrary, getUserReviews } from "../../services/firestoreService";
 import { getImageURL, searchGames } from "../../services/igdbService";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import toast from "react-hot-toast";
 
+const AI_API_URL = process.env.REACT_APP_IGDB_PROXY_URL?.replace("/api/igdb", "/api/ai/recommend") || "http://localhost:5000/api/ai/recommend";
+
 export default function FeedPage() {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState([]);
+  const [aiAnalysis, setAiAnalysis] = useState("");
   const [loadingRecs, setLoadingRecs] = useState(false);
+  const [recError, setRecError] = useState("");
+  const [recGameCovers, setRecGameCovers] = useState({});
   const { currentUser, userProfile } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   useEffect(() => { loadFeed(); }, []);
-  useEffect(() => { if (currentUser) loadRecommendations(); }, [currentUser]);
+  useEffect(() => { if (currentUser) loadAIRecommendations(); }, [currentUser]);
 
   async function loadFeed() {
     try { setReviews(await getLatestReviews(30)); } catch (err) { console.error(err); }
     finally { setLoading(false); }
   }
 
-  async function loadRecommendations() {
+  async function loadAIRecommendations() {
     setLoadingRecs(true);
+    setRecError("");
     try {
-      const library = await getUserLibrary(currentUser.uid);
-      const genres = {};
-      library.forEach((g) => { if (g.genre) genres[g.genre] = (genres[g.genre]||0) + 1; });
-      (userProfile?.favoriteGenres || []).forEach((g) => { genres[g] = (genres[g]||0) + 3; });
-      const topGenres = Object.entries(genres).sort((a,b) => b[1]-a[1]).slice(0,3).map(([g]) => g);
-      if (topGenres.length === 0) topGenres.push("RPG", "Action", "Adventure");
-      const results = await searchGames(topGenres.join(" "), 6);
-      const libIds = new Set(library.map((g) => g.gameId));
-      setRecommendations((results||[]).filter((g) => !libIds.has(String(g.id))).slice(0,5));
-    } catch (err) { console.error(err); }
-    finally { setLoadingRecs(false); }
+      // Gather user data
+      const [library, userRevs] = await Promise.all([
+        getUserLibrary(currentUser.uid),
+        getUserReviews(currentUser.uid),
+      ]);
+
+      if (library.length === 0 && userRevs.length === 0) {
+        setRecError(t("addGamesForRecs"));
+        setLoadingRecs(false);
+        return;
+      }
+
+      // Call DeepSeek via backend proxy
+      const response = await fetch(AI_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          library: library,
+          reviews: userRevs,
+          favoriteGenres: userProfile?.favoriteGenres || [],
+          language: lang,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`AI request failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.error) {
+        setRecError(data.error);
+        return;
+      }
+
+      setRecommendations(data.recommendations || []);
+      setAiAnalysis(data.analysis || "");
+
+      // Fetch cover images for recommended games from IGDB
+      const covers = {};
+      for (const rec of (data.recommendations || []).slice(0, 5)) {
+        try {
+          const results = await searchGames(rec.name, 1);
+          if (results?.[0]?.cover?.image_id) {
+            covers[rec.name] = {
+              coverId: results[0].cover.image_id,
+              gameId: results[0].id,
+            };
+          }
+        } catch { /* ignore cover fetch errors */ }
+      }
+      setRecGameCovers(covers);
+
+    } catch (err) {
+      console.error("AI recommendation error:", err);
+      setRecError(lang === "ar" ? "فشل تحميل التوصيات الذكية" : "Failed to load AI recommendations");
+    } finally {
+      setLoadingRecs(false);
+    }
   }
 
   async function handleLike(rid) {
@@ -78,20 +132,76 @@ export default function FeedPage() {
             </div>
           )}
         </div>
+
+        {/* AI Recommendations Sidebar */}
         {currentUser && (
           <aside className="feed-sidebar">
-            <div className="sidebar-card">
-              <h3>{t("aiRecsTitle")}</h3>
-              <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>{t("aiRecsSubtitle")}</p>
-              {loadingRecs ? <p className="empty-text">{t("analyzingTaste")}</p> :
-                recommendations.length === 0 ? <p className="empty-text">{t("addGamesForRecs")}</p> :
-                <div className="rec-list">{recommendations.map((game) => (
-                  <Link to={`/game/${game.id}`} key={game.id} className="rec-item">
-                    {game.cover && <img src={getImageURL(game.cover.image_id, "thumb")} alt="" className="rec-cover" />}
-                    <div><strong>{game.name}</strong>{game.total_rating && <span className="rec-rating">⭐ {Math.round(game.total_rating)}</span>}</div>
-                  </Link>
-                ))}</div>
-              }
+            <div className="sidebar-card ai-rec-card">
+              <div className="ai-rec-header">
+                <h3>{t("aiRecsTitle")}</h3>
+                <span className="ai-badge">DeepSeek AI</span>
+              </div>
+              <p className="ai-rec-subtitle">{t("aiRecsSubtitle")}</p>
+
+              {loadingRecs ? (
+                <div className="ai-loading">
+                  <div className="ai-loading-dots">
+                    <span></span><span></span><span></span>
+                  </div>
+                  <p>{t("analyzingTaste")}</p>
+                </div>
+              ) : recError ? (
+                <div className="ai-error">
+                  <p>{recError}</p>
+                  <button onClick={loadAIRecommendations} className="btn-ghost btn-sm" style={{ marginTop: "0.5rem" }}>
+                    {lang === "ar" ? "إعادة المحاولة" : "Retry"}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* AI Analysis */}
+                  {aiAnalysis && (
+                    <div className="ai-analysis">
+                      <p>{aiAnalysis}</p>
+                    </div>
+                  )}
+
+                  {/* Recommendations */}
+                  <div className="ai-rec-list">
+                    {recommendations.map((rec, i) => {
+                      const cover = recGameCovers[rec.name];
+                      return (
+                        <div key={i} className="ai-rec-item">
+                          <div className="ai-rec-item-header">
+                            {cover ? (
+                              <Link to={`/game/${cover.gameId}`}>
+                                <img src={getImageURL(cover.coverId, "thumb")} alt="" className="ai-rec-cover" />
+                              </Link>
+                            ) : (
+                              <div className="ai-rec-cover-placeholder">🎮</div>
+                            )}
+                            <div className="ai-rec-info">
+                              {cover ? (
+                                <Link to={`/game/${cover.gameId}`}><strong>{rec.name}</strong></Link>
+                              ) : (
+                                <strong>{rec.name}</strong>
+                              )}
+                              <span className="ai-rec-genre">{rec.genre}</span>
+                            </div>
+                            <div className="ai-match-badge">{rec.matchPercent}%</div>
+                          </div>
+                          <p className="ai-rec-reason">{rec.reason}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Refresh button */}
+                  <button onClick={loadAIRecommendations} className="btn-ghost btn-sm ai-refresh-btn">
+                    🔄 {lang === "ar" ? "تحديث التوصيات" : "Refresh Recommendations"}
+                  </button>
+                </>
+              )}
             </div>
           </aside>
         )}

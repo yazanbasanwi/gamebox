@@ -1,85 +1,103 @@
 // src/components/pages/FeedPage.jsx
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { getLatestReviews, toggleReviewLike, getUserLibrary } from "../../services/firestoreService";
+import { getLatestReviews, toggleReviewLike, getUserLibrary, getUserReviews } from "../../services/firestoreService";
 import { getImageURL, searchGames } from "../../services/igdbService";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import toast from "react-hot-toast";
+
+const AI_API_URL = process.env.REACT_APP_IGDB_PROXY_URL?.replace("/api/igdb", "/api/ai/recommend") || "http://localhost:5000/api/ai/recommend";
 
 export default function FeedPage() {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState([]);
+  const [aiAnalysis, setAiAnalysis] = useState("");
   const [loadingRecs, setLoadingRecs] = useState(false);
+  const [recError, setRecError] = useState("");
+  const [recGameCovers, setRecGameCovers] = useState({});
   const { currentUser, userProfile } = useAuth();
+  const { t, lang } = useLanguage();
 
   useEffect(() => { loadFeed(); }, []);
-  useEffect(() => { if (currentUser) loadRecommendations(); }, [currentUser]);
+  useEffect(() => { if (currentUser) loadAIRecommendations(); }, [currentUser]);
 
   async function loadFeed() {
-    try { setReviews(await getLatestReviews(30)); }
-    catch (err) { console.error(err); }
+    try { setReviews(await getLatestReviews(30)); } catch (err) { console.error(err); }
     finally { setLoading(false); }
   }
 
-  // AI Recommendation: analyze user's library genres and review patterns to suggest games
-  async function loadRecommendations() {
+  async function loadAIRecommendations() {
     setLoadingRecs(true);
+    setRecError("");
     try {
-      // Get user's library to analyze preferences
-      const library = await getUserLibrary(currentUser.uid);
-      const genres = {};
+      // Gather user data
+      const [library, userRevs] = await Promise.all([
+        getUserLibrary(currentUser.uid),
+        getUserReviews(currentUser.uid),
+      ]);
 
-      // Count genre frequency from library
-      library.forEach((game) => {
-        if (game.genre) {
-          genres[game.genre] = (genres[game.genre] || 0) + 1;
-        }
-      });
-
-      // Also consider favorite genres from profile
-      (userProfile?.favoriteGenres || []).forEach((g) => {
-        genres[g] = (genres[g] || 0) + 3; // weight profile preferences higher
-      });
-
-      // Get top genres
-      const topGenres = Object.entries(genres)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([genre]) => genre);
-
-      if (topGenres.length === 0) {
-        // Default recommendations if no preferences found
-        topGenres.push("RPG", "Action", "Adventure");
+      if (library.length === 0 && userRevs.length === 0) {
+        setRecError(lang === "ar" ? "لم تقم بإضافة ألعاب بعد" : "No games or reviews found yet");
+        setLoadingRecs(false);
+        return;
       }
 
-      // Search for games in top genres
-      const searchQuery = topGenres.join(" ");
-      const results = await searchGames(searchQuery, 6);
+      // Call DeepSeek via backend proxy
+      const response = await fetch(AI_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          library: library,
+          reviews: userRevs,
+          favoriteGenres: userProfile?.favoriteGenres || [],
+          language: lang,
+        }),
+      });
 
-      // Filter out games already in library
-      const libraryIds = new Set(library.map((g) => g.gameId));
-      const filtered = (results || []).filter((g) => !libraryIds.has(String(g.id)));
+      if (!response.ok) {
+        throw new Error(`AI request failed: ${response.status}`);
+      }
 
-      setRecommendations(filtered.slice(0, 5));
+      const data = await response.json();
+
+      if (data.error) {
+        setRecError(data.error);
+        return;
+      }
+
+      setRecommendations(data.recommendations || []);
+      setAiAnalysis(data.analysis || "");
+
+      // Fetch cover images for recommended games from IGDB
+      const covers = {};
+      for (const rec of (data.recommendations || []).slice(0, 5)) {
+        try {
+          const results = await searchGames(rec.name, 1);
+          if (results?.[0]?.cover?.image_id) {
+            covers[rec.name] = {
+              coverId: results[0].cover.image_id,
+              gameId: results[0].id,
+            };
+          }
+        } catch { /* ignore cover fetch errors */ }
+      }
+      setRecGameCovers(covers);
+
     } catch (err) {
-      console.error("Recommendations error:", err);
+      console.error("AI recommendation error:", err);
+      setRecError(lang === "ar" ? "فشل تحميل التوصيات الذكية" : "Failed to load AI recommendations");
     } finally {
       setLoadingRecs(false);
     }
   }
 
-  async function handleLike(reviewId) {
-    if (!currentUser) return toast.error("Please log in");
+  async function handleLike(rid) {
+    if (!currentUser) return toast.error(t("logIn"));
     try {
-      const isLiked = await toggleReviewLike(reviewId, currentUser.uid);
-      setReviews((prev) => prev.map((r) =>
-        r.id === reviewId ? {
-          ...r,
-          likes: isLiked ? [...(r.likes || []), currentUser.uid] : (r.likes || []).filter((id) => id !== currentUser.uid),
-          likesCount: (r.likesCount || 0) + (isLiked ? 1 : -1),
-        } : r
-      ));
+      const liked = await toggleReviewLike(rid, currentUser.uid);
+      setReviews((p) => p.map((r) => r.id === rid ? { ...r, likes: liked ? [...(r.likes||[]), currentUser.uid] : (r.likes||[]).filter((i) => i !== currentUser.uid), likesCount: (r.likesCount||0) + (liked ? 1 : -1) } : r));
     } catch { toast.error("Failed"); }
   }
 
@@ -89,9 +107,9 @@ export default function FeedPage() {
     <div className="page feed-page">
       <div className="feed-layout">
         <div className="feed-main">
-          <h1>Community Reviews</h1>
+          <h1>{t("communityReviews")}</h1>
           {reviews.length === 0 ? (
-            <div className="empty-state"><p>No reviews yet.</p><Link to="/browse" className="btn-primary">Browse Games</Link></div>
+            <div className="empty-state"><p>{t("noReviewsYet")}</p><Link to="/browse" className="btn-primary">{t("browseGames")}</Link></div>
           ) : (
             <div className="feed-list">
               {reviews.map((review) => (
@@ -99,18 +117,15 @@ export default function FeedPage() {
                   <div className="feed-card-header">
                     <div className="feed-user">
                       <div className="feed-avatar">{review.username?.[0]?.toUpperCase()}</div>
-                      <div>
-                        <strong>{review.username}</strong>
-                        <span className="feed-game-link"> reviewed <Link to={`/game/${review.gameId}`}>{review.gameTitle}</Link></span>
-                      </div>
+                      <div><strong>{review.username}</strong><span className="feed-game-link"> {t("reviewed")} <Link to={`/game/${review.gameId}`}>{review.gameTitle}</Link></span></div>
                     </div>
-                    <span className="feed-rating">{"★".repeat(Math.round(review.weightedScore || review.overallRating))} {review.weightedScore || review.overallRating}/5</span>
+                    <span className="feed-rating">{"★".repeat(Math.round(review.weightedScore||review.overallRating))} {review.weightedScore||review.overallRating}/5</span>
                   </div>
                   {review.gameCover && <img src={getImageURL(review.gameCover, "cover_small")} alt="" className="feed-cover" />}
                   {review.textContent && <p className="feed-text">{review.textContent}</p>}
                   <div className="feed-actions">
-                    <button className={`like-btn ${review.likes?.includes(currentUser?.uid) ? "liked" : ""}`} onClick={() => handleLike(review.id)}>❤️ {review.likesCount || 0}</button>
-                    <span>💬 {review.commentsCount || 0}</span>
+                    <button className={`like-btn ${review.likes?.includes(currentUser?.uid) ? "liked" : ""}`} onClick={() => handleLike(review.id)}>❤️ {review.likesCount||0}</button>
+                    <span>💬 {review.commentsCount||0}</span>
                   </div>
                 </div>
               ))}
@@ -121,23 +136,72 @@ export default function FeedPage() {
         {/* AI Recommendations Sidebar */}
         {currentUser && (
           <aside className="feed-sidebar">
-            <div className="sidebar-card">
-              <h3>🤖 AI Recommendations</h3>
-              <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>Based on your library and preferences</p>
-              {loadingRecs ? <p className="empty-text">Analyzing your taste...</p> :
-                recommendations.length === 0 ? <p className="empty-text">Add games to your library for recommendations</p> :
-                  <div className="rec-list">
-                    {recommendations.map((game) => (
-                      <Link to={`/game/${game.id}`} key={game.id} className="rec-item">
-                        {game.cover && <img src={getImageURL(game.cover.image_id, "thumb")} alt="" className="rec-cover" />}
-                        <div>
-                          <strong>{game.name}</strong>
-                          {game.total_rating && <span className="rec-rating">⭐ {Math.round(game.total_rating)}</span>}
-                        </div>
-                      </Link>
-                    ))}
+            <div className="sidebar-card ai-rec-card">
+              <div className="ai-rec-header">
+                <h3>{t("aiRecsTitle")}</h3>
+                
+              </div>
+              <p className="ai-rec-subtitle">{t("aiRecsSubtitle")}</p>
+
+              {loadingRecs ? (
+                <div className="ai-loading">
+                  <div className="ai-loading-dots">
+                    <span></span><span></span><span></span>
                   </div>
-              }
+                  <p>{t("analyzingTaste")}</p>
+                </div>
+              ) : recError ? (
+                <div className="ai-error">
+                  <p>{recError}</p>
+                  <button onClick={loadAIRecommendations} className="btn-ghost btn-sm" style={{ marginTop: "0.5rem" }}>
+                    {lang === "ar" ? "إعادة المحاولة" : "Retry"}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* AI Analysis */}
+                  {aiAnalysis && (
+                    <div className="ai-analysis">
+                      <p>{aiAnalysis}</p>
+                    </div>
+                  )}
+
+                  {/* Recommendations */}
+                  <div className="ai-rec-list">
+                    {recommendations.map((rec, i) => {
+                      const cover = recGameCovers[rec.name];
+                      return (
+                        <div key={i} className="ai-rec-item">
+                          <div className="ai-rec-item-header">
+                            {cover ? (
+                              <Link to={`/game/${cover.gameId}`}>
+                                <img src={getImageURL(cover.coverId, "thumb")} alt="" className="ai-rec-cover" />
+                              </Link>
+                            ) : (
+                              <div className="ai-rec-cover-placeholder">🎮</div>
+                            )}
+                            <div className="ai-rec-info">
+                              {cover ? (
+                                <Link to={`/game/${cover.gameId}`}><strong>{rec.name}</strong></Link>
+                              ) : (
+                                <strong>{rec.name}</strong>
+                              )}
+                              <span className="ai-rec-genre">{rec.genre}</span>
+                            </div>
+                            <div className="ai-match-badge">{rec.matchPercent}%</div>
+                          </div>
+                          <p className="ai-rec-reason">{rec.reason}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Refresh button */}
+                  <button onClick={loadAIRecommendations} className="btn-ghost btn-sm ai-refresh-btn">
+                    🔄 {lang === "ar" ? "تحديث التوصيات" : "Refresh Recommendations"}
+                  </button>
+                </>
+              )}
             </div>
           </aside>
         )}

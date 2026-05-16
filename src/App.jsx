@@ -21,6 +21,9 @@ import ListsPage from "./components/pages/ListsPage";
 import ListDetailPage from "./components/pages/ListDetailPage";
 import JournalPage from "./components/pages/JournalPage";
 import CommunityPage from "./components/pages/CommunityPage";
+import SteamImportPage from "./components/pages/SteamImportPage";
+import ComparePage from "./components/pages/ComparePage";
+import SettingsPage from "./components/pages/SettingsPage";
 
 import "./styles/index.css";
 
@@ -38,12 +41,15 @@ function AppRoutes() {
           <Route path="/game/:id" element={<GameDetailPage />} />
           <Route path="/feed" element={<FeedPage />} />
           <Route path="/community" element={<CommunityPage />} />
+          <Route path="/compare" element={<ComparePage />} />
           <Route path="/user/:userId" element={<ProfilePage />} />
           <Route path="/library" element={<ProtectedRoute><LibraryPage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/lists" element={<ProtectedRoute><ListsPage /></ProtectedRoute>} />
           <Route path="/list/:listId" element={<ProtectedRoute><ListDetailPage /></ProtectedRoute>} />
           <Route path="/journal" element={<ProtectedRoute><JournalPage /></ProtectedRoute>} />
+          <Route path="/steam" element={<ProtectedRoute><SteamImportPage /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
           <Route path="*" element={<div className="page"><div className="empty-state"><h2>404 — Page Not Found</h2></div></div>} />
         </Routes>
@@ -57,7 +63,7 @@ export default function App() {
     <Router>
       <LanguageProvider>
         <AuthProvider>
-          <Toaster position="top-right" toastOptions={{ duration: 3000, style: { background: "#1a1a2e", color: "#e0e0e0", border: "1px solid #333" } }} />
+          <Toaster position="top-right" toastOptions={{ duration: 3000, style: { background: "#141428", color: "#eaeaf0", border: "1px solid #2a2a48" } }} />
           <AppRoutes />
         </AuthProvider>
       </LanguageProvider>

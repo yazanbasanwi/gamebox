@@ -1045,13 +1045,17 @@ h3 { font-size: 1.1rem; }
 }
 .feed-filter-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-light); }
 .feed-list { display: flex; flex-direction: column; gap: 1.25rem; }
-.feed-card {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 1.25rem;
-  transition: border-color var(--transition);
-}
+.feed-card { 
+background: var(--bg-card); border: 1px solid var(--border);
+ border-radius: var(--radius-lg); padding: 1.25rem; 
+transition: border-color var(--transition); }
+
 .feed-card:hover { border-color: var(--border-hover); }
+
 .feed-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.feed-card-body { display: flex; gap: 1rem; align-items: flex-start; }
+.feed-card-text { flex: 1; min-width: 0; }
+
 .feed-user { display: flex; align-items: center; gap: 0.75rem; }
 .feed-avatar {
   width: 36px; height: 36px; border-radius: 50%;
@@ -1064,7 +1068,14 @@ h3 { font-size: 1.1rem; }
 .feed-game-link a { color: var(--accent-light); }
 .feed-game-link a:hover { color: var(--accent); }
 .feed-rating { font-size: 0.82rem; font-weight: 600; color: var(--warning); white-space: nowrap; }
-.feed-cover { width: 100%; max-height: 160px; object-fit: cover; border-radius: var(--radius); margin-bottom: 0.875rem; border: 1px solid var(--border); }
+.feed-cover {
+  width: 80px;
+  height: 107px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
 .feed-text { font-size: 0.875rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 0.875rem; }
 .feed-actions { display: flex; align-items: center; gap: 1rem; }
 .feed-sidebar { position: sticky; top: 80px; height: fit-content; }

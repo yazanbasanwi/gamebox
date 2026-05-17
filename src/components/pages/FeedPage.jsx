@@ -128,21 +128,27 @@ export default function FeedPage() {
                     </div>
                     <span className="feed-rating">{"★".repeat(Math.round(review.weightedScore||review.overallRating))} {review.weightedScore||review.overallRating}/5</span>
                   </div>
-                  {review.gameCover && <img src={getImageURL(review.gameCover, "cover_big")} alt="" className="feed-cover" />}
-                  {review.textContent && <p className="feed-text">{review.textContent}</p>}
-                  <div className="feed-actions">
-                    <button
-                      className={`like-btn ${review.likes?.includes(currentUser?.uid) ? "liked" : ""}`}
-                      onClick={() => handleLike(review.id)}
-                    >
-                      <Heart size={14} className="like-icon" />
-                      {review.likesCount||0}
-                    </button>
-                    <button className="feed-report-btn" onClick={() => handleReport(review.id)} title={lang === "ar" ? "إبلاغ" : "Report"}>
-                      <Flag size={13} />
-                      <span>{lang === "ar" ? "إبلاغ" : "Report"}</span>
-                    </button>
-                  </div>
+<div className="feed-card-body">
+  {review.gameCover && (
+    <img src={getImageURL(review.gameCover, "720p")} alt="" className="feed-cover" />
+  )}
+  <div className="feed-card-text">
+    {review.textContent && <p className="feed-text">{review.textContent}</p>}
+    <div className="feed-actions">
+      <button
+        className={`like-btn ${review.likes?.includes(currentUser?.uid) ? "liked" : ""}`}
+        onClick={() => handleLike(review.id)}
+      >
+        <Heart size={14} className="like-icon" />
+        {review.likesCount||0}
+      </button>
+      <button className="feed-report-btn" onClick={() => handleReport(review.id)} title={lang === "ar" ? "إبلاغ" : "Report"}>
+        <Flag size={13} />
+        <span>{lang === "ar" ? "إبلاغ" : "Report"}</span>
+      </button>
+    </div>
+  </div>
+</div>
                 </div>
               ))}
             </div>

@@ -111,7 +111,15 @@ export default function LibraryPage() {
           {filtered.map(entry => (
             <div key={entry.gameId} className="library-card">
               <Link to={`/game/${entry.gameId}`}>
-                <img src={getImageURL(entry.gameCover, "cover_small")} alt={entry.gameTitle} className="library-cover" />
+                <img
+  src={
+    entry.gameId?.toString().startsWith("steam_")
+      ? entry.gameCover
+      : getImageURL(entry.gameCover, "cover_small")
+  }
+  alt={entry.gameTitle}
+  className="library-cover"
+/>
               </Link>
               <div className="library-info">
                 <Link to={`/game/${entry.gameId}`}><h3>{entry.gameTitle}</h3></Link>

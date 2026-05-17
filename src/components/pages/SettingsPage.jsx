@@ -7,7 +7,7 @@ import { useLanguage } from "../../context/LanguageContext";
 import { updateUserProfile } from "../../services/firestoreService";
 import toast from "react-hot-toast";
 
-const STEAM_API_URL = process.env.REACT_APP_IGDB_PROXY_URL?.replace("/api/igdb", "/api/steam") || "http://localhost:5000/api/steam";
+const STEAM_API_URL = process.env.REACT_APP_IGDB_PROXY_URL?.replace("/api/igdb", "/api/steam") || "http://localhost:3000/api/steam";
 
 export default function SettingsPage() {
   const { currentUser, userProfile, fetchUserProfile } = useAuth();
@@ -52,39 +52,82 @@ export default function SettingsPage() {
   }
 
   // Connect Steam account and save to profile
-  async function handleConnectSteam() {
-    const parsed = parseSteamInput(steamInput);
-    if (!parsed) {
-      toast.error(lang === "ar" ? "أدخل معرف Steam صحيح" : "Enter a valid Steam ID or username");
+ async function handleConnectSteam() {
+  const parsed = parseSteamInput(steamInput);
+
+  if (!parsed) {
+    toast.error(lang === "ar" ? "أدخل معرف Steam صحيح" : "Enter a valid Steam ID or username");
+    return;
+  }
+
+  setConnectingSteam(true);
+
+  try {
+    let steamId = parsed.value;
+
+    if (parsed.type === "vanity") {
+      const resolveUrl = `${STEAM_API_URL}/resolve/${encodeURIComponent(parsed.value)}`;
+      console.log("Resolve URL:", resolveUrl);
+
+      const res = await fetch(resolveUrl);
+
+      if (!res.ok) {
+        toast.error("Steam user not found");
+        return;
+      }
+
+      const data = await res.json();
+      console.log("Resolve response:", data);
+
+      steamId =
+        data.steamId ||
+        data.steamid ||
+        data.response?.steamid;
+
+      if (!steamId) {
+        toast.error("Could not resolve Steam ID");
+        return;
+      }
+    }
+
+    const profileUrl = `${STEAM_API_URL}/profile/${steamId}`;
+    console.log("Profile URL:", profileUrl);
+
+    const profileRes = await fetch(profileUrl);
+
+    if (!profileRes.ok) {
+      toast.error("Profile not found");
       return;
     }
-    setConnectingSteam(true);
-    try {
-      let steamId = parsed.value;
-      if (parsed.type === "vanity") {
-        const res = await fetch(`${STEAM_API_URL}/resolve/${parsed.value}`);
-        if (!res.ok) { toast.error("Steam user not found"); return; }
-        const data = await res.json();
-        steamId = data.steamId;
-      }
-      const profileRes = await fetch(`${STEAM_API_URL}/profile/${steamId}`);
-      if (!profileRes.ok) { toast.error("Profile not found"); return; }
-      const profile = await profileRes.json();
 
-      await updateUserProfile(currentUser.uid, {
-        steamId,
-        steamProfile: profile.personaName,
-      });
-      await fetchUserProfile(currentUser.uid);
-      setSteamProfile(profile);
-      toast.success(lang === "ar" ? "تم ربط حساب Steam!" : "Steam account linked!");
-    } catch (err) {
-      console.error("Steam connect error:", err);
-      toast.error("Failed to connect Steam");
-    } finally {
-      setConnectingSteam(false);
+    const profile = await profileRes.json();
+    console.log("Profile response:", profile);
+
+    await updateUserProfile(currentUser.uid, {
+      steamId,
+      steamProfile: profile.personaName || profile.personaname || profile.name,
+    });
+
+    await fetchUserProfile(currentUser.uid);
+
+    setSteamProfile({
+      ...profile,
+      personaName: profile.personaName || profile.personaname || profile.name,
+    });
+
+    toast.success(lang === "ar" ? "تم ربط حساب Steam!" : "Steam account linked!");
+  } catch (err) {
+    console.error("Steam connect error:", err);
+
+    if (err.message === "Failed to fetch") {
+      toast.error("Cannot connect to backend. Make sure server is running on port 5000.");
+    } else {
+      toast.error(err.message || "Failed to connect Steam");
     }
+  } finally {
+    setConnectingSteam(false);
   }
+}
 
   // Disconnect Steam account from profile
   async function handleDisconnectSteam() {

@@ -149,6 +149,64 @@ Comment: "${text.slice(0, 500)}"`
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
+const STEAM_API_KEY = process.env.STEAM_API_KEY;
+
+// Resolve vanity URL to Steam ID
+app.get("/api/steam/resolve/:vanity", async (req, res) => {
+  try {
+    const url = `https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/?key=${STEAM_API_KEY}&vanityurl=${req.params.vanity}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (data.response?.success !== 1) return res.status(404).json({ error: "User not found" });
+    res.json({ steamId: data.response.steamid });
+  } catch (err) {
+    console.error("Steam resolve error:", err);
+    res.status(500).json({ error: "Failed to resolve Steam vanity URL" });
+  }
+});
+
+// Get Steam profile info
+app.get("/api/steam/profile/:steamId", async (req, res) => {
+  try {
+    const url = `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${STEAM_API_KEY}&steamids=${req.params.steamId}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    const player = data.response?.players?.[0];
+    if (!player) return res.status(404).json({ error: "Profile not found" });
+    res.json({
+      steamId: player.steamid,
+      personaName: player.personaname,
+      avatar: player.avatarfull,
+      profileUrl: player.profileurl,
+    });
+  } catch (err) {
+    console.error("Steam profile error:", err);
+    res.status(500).json({ error: "Failed to fetch Steam profile" });
+  }
+});
+
+// Get Steam game library
+app.get("/api/steam/games/:steamId", async (req, res) => {
+  try {
+    const url = `https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=${STEAM_API_KEY}&steamid=${req.params.steamId}&include_appinfo=true&include_played_free_games=true`;
+    const response = await fetch(url);
+    const data = await response.json();
+    const games = data.response?.games || [];
+    res.json({ games: games.map(g => ({
+      appId: g.appid,
+      name: g.name,
+      playtimeMinutes: g.playtime_forever,
+      iconUrl: g.img_icon_url
+        ? `https://media.steampowered.com/steamcommunity/public/images/apps/${g.appid}/${g.img_icon_url}.jpg`
+        : null,
+      coverUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${g.appid}/library_600x900.jpg`,
+      headerUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${g.appid}/header.jpg`,
+    }))});
+  } catch (err) {
+    console.error("Steam games error:", err);
+    res.status(500).json({ error: "Failed to fetch Steam games" });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`🚀 GameBox API server running on http://localhost:${PORT}`);

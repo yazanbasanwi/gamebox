@@ -5,7 +5,9 @@ import { useLanguage } from "../../context/LanguageContext";
 import { addToLibrary, updateUserProfile } from "../../services/firestoreService";
 import toast from "react-hot-toast";
 
-const STEAM_API_URL = process.env.REACT_APP_IGDB_PROXY_URL?.replace("/api/igdb", "/api/steam") || "http://localhost:5000/api/steam";
+const STEAM_API_URL =
+  process.env.REACT_APP_IGDB_PROXY_URL?.replace("/api/igdb", "/api/steam") ||
+  "http://localhost:3000/api/steam";
 
 export default function SteamImportPage() {
   const { currentUser, userProfile, fetchUserProfile } = useAuth();
@@ -19,87 +21,182 @@ export default function SteamImportPage() {
   const [importing, setImporting] = useState(false);
   const [selectedGames, setSelectedGames] = useState(new Set());
   const [importedCount, setImportedCount] = useState(0);
-  const [step, setStep] = useState("connect"); // connect, preview, done
-  const [filter, setFilter] = useState("all"); // all, played, unplayed
+  const [step, setStep] = useState("connect");
+  const [filter, setFilter] = useState("all");
 
-  // Extract Steam ID from various input formats
   function parseSteamInput(input) {
     const trimmed = input.trim();
-    // Direct Steam ID (17 digit number)
+
     if (/^\d{17}$/.test(trimmed)) return { type: "id", value: trimmed };
-    // Full profile URL
+
     const idMatch = trimmed.match(/steamcommunity\.com\/profiles\/(\d{17})/);
     if (idMatch) return { type: "id", value: idMatch[1] };
-    // Vanity URL
+
     const vanityMatch = trimmed.match(/steamcommunity\.com\/id\/([^/]+)/);
     if (vanityMatch) return { type: "vanity", value: vanityMatch[1] };
-    // Just a username
-    if (trimmed.length > 0 && !/\s/.test(trimmed)) return { type: "vanity", value: trimmed };
+
+    if (trimmed.length > 0 && !/\s/.test(trimmed)) {
+      return { type: "vanity", value: trimmed };
+    }
+
     return null;
   }
 
   async function handleConnect() {
     const parsed = parseSteamInput(steamInput);
+
     if (!parsed) {
-      toast.error(lang === "ar" ? "أدخل معرف Steam صحيح أو رابط الملف الشخصي" : "Enter a valid Steam ID, profile URL, or username");
+      toast.error(
+        lang === "ar"
+          ? "أدخل معرف Steam صحيح أو رابط الملف الشخصي"
+          : "Enter a valid Steam ID, profile URL, or username"
+      );
       return;
     }
 
     setLoading(true);
+
     try {
       let steamId = parsed.value;
 
-      // Resolve vanity URL to Steam ID
       if (parsed.type === "vanity") {
-        const resolveRes = await fetch(`${STEAM_API_URL}/resolve/${parsed.value}`);
+        const resolveUrl = `${STEAM_API_URL}/resolve/${encodeURIComponent(parsed.value)}`;
+        console.log("Resolve URL:", resolveUrl);
+
+        const resolveRes = await fetch(resolveUrl);
+
         if (!resolveRes.ok) {
           toast.error(lang === "ar" ? "لم يتم العثور على مستخدم Steam" : "Steam user not found");
-          setLoading(false);
           return;
         }
+
         const resolveData = await resolveRes.json();
-        steamId = resolveData.steamId;
+        console.log("Resolve response:", resolveData);
+
+        steamId =
+          resolveData.steamId ||
+          resolveData.steamid ||
+          resolveData.response?.steamid;
+
+        if (!steamId) {
+          toast.error("Could not resolve Steam ID");
+          return;
+        }
       }
 
-      // Fetch profile
-      const profileRes = await fetch(`${STEAM_API_URL}/profile/${steamId}`);
-      if (!profileRes.ok) throw new Error("Profile not found");
-      const profile = await profileRes.json();
-      setSteamProfile(profile);
+      const profileUrl = `${STEAM_API_URL}/profile/${steamId}`;
+      console.log("Profile URL:", profileUrl);
 
-      // Fetch owned games
-      const gamesRes = await fetch(`${STEAM_API_URL}/games/${steamId}`);
+      const profileRes = await fetch(profileUrl);
+
+      if (!profileRes.ok) {
+        throw new Error("Profile not found");
+      }
+
+      const profile = await profileRes.json();
+      console.log("Profile response:", profile);
+
+ const fixedProfile = {
+  ...profile,
+
+  personaName:
+    profile.personaName ||
+    profile.personaname ||
+    profile.name ||
+    profile.steamProfile ||
+    steamId,
+
+  avatarUrl:
+    profile.avatarUrl ||
+    profile.avatarfull ||
+    profile.avatar ||
+    profile.avatarmedium ||
+    "",
+
+  profileUrl:
+    profile.profileUrl ||
+    profile.profileurl ||
+    profile.profile ||
+    `https://steamcommunity.com/profiles/${steamId}`,
+};
+
+      setSteamProfile(fixedProfile);
+
+      const gamesUrl = `${STEAM_API_URL}/games/${steamId}`;
+      console.log("Games URL:", gamesUrl);
+
+      const gamesRes = await fetch(gamesUrl);
+
       if (!gamesRes.ok) {
-        const err = await gamesRes.json();
-        toast.error(err.error || "Failed to fetch games");
-        setLoading(false);
+        let errorMessage = "Failed to fetch games";
+
+        try {
+          const err = await gamesRes.json();
+          errorMessage = err.error || errorMessage;
+        } catch {
+          // ignore JSON parse error
+        }
+
+        toast.error(errorMessage);
         return;
       }
-      const gamesData = await gamesRes.json();
-      setSteamGames(gamesData.games || []);
 
-      // Fetch recent games
+      const gamesData = await gamesRes.json();
+      console.log("Games response:", gamesData);
+
+      const games = gamesData.games || [];
+
+      setSteamGames(games);
+
       try {
-        const recentRes = await fetch(`${STEAM_API_URL}/recent/${steamId}`);
+        const recentUrl = `${STEAM_API_URL}/recent/${steamId}`;
+        console.log("Recent URL:", recentUrl);
+
+        const recentRes = await fetch(recentUrl);
+
         if (recentRes.ok) {
           const recentData = await recentRes.json();
+          console.log("Recent response:", recentData);
           setRecentGames(recentData.games || []);
         }
-      } catch { /* recent games is optional */ }
+      } catch {
+        // recent games is optional
+      }
 
-      // Save Steam ID to profile
-      await updateUserProfile(currentUser.uid, { steamId: steamId, steamProfile: profile.personaName });
+      await updateUserProfile(currentUser.uid, {
+        steamId,
+        steamProfile: fixedProfile.personaName,
+      });
+
       await fetchUserProfile(currentUser.uid);
 
-      // Pre-select recently played games
-      const recentIds = new Set((gamesData.games || []).filter((g) => g.playtimeMinutes > 0).slice(0, 20).map((g) => g.appId));
-      setSelectedGames(recentIds);
+      const recentIds = new Set(
+        games
+          .filter((g) => g.playtimeMinutes > 0)
+          .slice(0, 20)
+          .map((g) => g.appId)
+      );
 
+      setSelectedGames(recentIds);
       setStep("preview");
-      toast.success(lang === "ar" ? `تم العثور على ${gamesData.totalGames} لعبة!` : `Found ${gamesData.totalGames} games!`);
+
+      toast.success(
+        lang === "ar"
+          ? `تم العثور على ${gamesData.totalGames || games.length} لعبة!`
+          : `Found ${gamesData.totalGames || games.length} games!`
+      );
     } catch (err) {
       console.error("Steam connect error:", err);
-      toast.error(lang === "ar" ? "فشل الاتصال بـ Steam" : "Failed to connect to Steam");
+
+      if (err.message === "Failed to fetch") {
+        toast.error("Cannot connect to backend. Make sure server is running on port 5000.");
+      } else {
+        toast.error(
+          lang === "ar"
+            ? "فشل الاتصال بـ Steam"
+            : err.message || "Failed to connect to Steam"
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -134,21 +231,29 @@ export default function SteamImportPage() {
 
     for (const game of steamGames) {
       if (!selectedGames.has(game.appId)) continue;
+  console.log("Importing:", {
+    appId: game.appId,
+    name: game.name,
+    coverUrl: game.coverUrl,
+    builtUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.appId}/header.jpg`
+  });
 
       try {
-        const status = recentAppIds.has(game.appId) ? "playing"
-          : game.playtimeMinutes > 120 ? "completed"
+        const status = recentAppIds.has(game.appId)
+          ? "playing"
+          : game.playtimeMinutes > 120
+          ? "completed"
           : "plan_to_play";
 
-        await addToLibrary(currentUser.uid, {
-          gameId: `steam_${game.appId}`,
-          gameTitle: game.name,
-          gameCover: "",
-          genre: "",
-          platform: "PC",
-          status: status,
-          hoursPlayed: game.playtimeHours,
-        });
+await addToLibrary(currentUser.uid, {
+  gameId: `steam_${game.appId}`,
+  gameTitle: game.name,
+  gameCover: `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.appId}/header.jpg`,
+  genre: "",
+  platform: "PC",
+  status,
+  hoursPlayed: game.playtimeHours || Math.round((game.playtimeMinutes || 0) / 60),
+});
         imported++;
       } catch (err) {
         console.error(`Failed to import ${game.name}:`, err);
@@ -168,7 +273,11 @@ export default function SteamImportPage() {
   }
 
   const filteredGames = getFilteredGames();
-  const totalPlaytime = steamGames.reduce((sum, g) => sum + g.playtimeHours, 0);
+
+  const totalPlaytime = steamGames.reduce(
+    (sum, g) => sum + (g.playtimeHours || (g.playtimeMinutes || 0) / 60),
+    0
+  );
 
   return (
     <div className="page steam-import-page">
@@ -181,7 +290,6 @@ export default function SteamImportPage() {
         </p>
       </div>
 
-      {/* Step 1: Connect */}
       {step === "connect" && (
         <div className="steam-connect-card">
           <div className="steam-connect-icon">🔗</div>
@@ -195,14 +303,28 @@ export default function SteamImportPage() {
           <div className="steam-input-group">
             <input
               type="text"
-              placeholder={lang === "ar" ? "Steam ID أو رابط الملف الشخصي أو اسم المستخدم" : "Steam ID, profile URL, or username"}
+              placeholder={
+                lang === "ar"
+                  ? "Steam ID أو رابط الملف الشخصي أو اسم المستخدم"
+                  : "Steam ID, profile URL, or username"
+              }
               value={steamInput}
               onChange={(e) => setSteamInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleConnect()}
               className="steam-input"
             />
-            <button onClick={handleConnect} className="btn-primary" disabled={loading || !steamInput.trim()}>
-              {loading ? (lang === "ar" ? "جاري البحث..." : "Searching...") : (lang === "ar" ? "ربط" : "Connect")}
+            <button
+              onClick={handleConnect}
+              className="btn-primary"
+              disabled={loading || !steamInput.trim()}
+            >
+              {loading
+                ? lang === "ar"
+                  ? "جاري البحث..."
+                  : "Searching..."
+                : lang === "ar"
+                ? "ربط"
+                : "Connect"}
             </button>
           </div>
 
@@ -215,26 +337,37 @@ export default function SteamImportPage() {
         </div>
       )}
 
-      {/* Step 2: Preview & Select */}
       {step === "preview" && steamProfile && (
         <>
-          {/* Steam Profile Card */}
           <div className="steam-profile-card">
             <img src={steamProfile.avatarUrl} alt="" className="steam-avatar" />
             <div className="steam-profile-info">
               <h3>{steamProfile.personaName}</h3>
               <div className="steam-profile-stats">
-                <span>🎮 {steamGames.length} {lang === "ar" ? "لعبة" : "games"}</span>
-                <span>⏱️ {Math.round(totalPlaytime)} {lang === "ar" ? "ساعة إجمالية" : "total hours"}</span>
-                {recentGames.length > 0 && <span>🔥 {recentGames.length} {lang === "ar" ? "لعبة حديثة" : "recently played"}</span>}
+                <span>
+                  🎮 {steamGames.length} {lang === "ar" ? "لعبة" : "games"}
+                </span>
+                <span>
+                  ⏱️ {Math.round(totalPlaytime)}{" "}
+                  {lang === "ar" ? "ساعة إجمالية" : "total hours"}
+                </span>
+                {recentGames.length > 0 && (
+                  <span>
+                    🔥 {recentGames.length} {lang === "ar" ? "لعبة حديثة" : "recently played"}
+                  </span>
+                )}
               </div>
             </div>
-            <a href={steamProfile.profileUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm">
+            <a
+              href={steamProfile.profileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost btn-sm"
+            >
               {lang === "ar" ? "عرض في Steam" : "View on Steam"} ↗
             </a>
           </div>
 
-          {/* Recently Played */}
           {recentGames.length > 0 && (
             <div className="steam-section">
               <h3>🔥 {lang === "ar" ? "ألعبت مؤخراً" : "Recently Played"}</h3>
@@ -244,7 +377,10 @@ export default function SteamImportPage() {
                     <img src={game.coverUrl} alt={game.name} className="steam-recent-cover" />
                     <div className="steam-recent-info">
                       <strong>{game.name}</strong>
-                      <span>{Math.round(game.playtimeRecent / 60 * 10) / 10}h {lang === "ar" ? "هذا الأسبوع" : "last 2 weeks"}</span>
+                      <span>
+                        {Math.round(((game.playtimeRecent || 0) / 60) * 10) / 10}h{" "}
+                        {lang === "ar" ? "هذا الأسبوع" : "last 2 weeks"}
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -252,25 +388,43 @@ export default function SteamImportPage() {
             </div>
           )}
 
-          {/* Game Selection */}
           <div className="steam-section">
             <div className="steam-section-header">
               <h3>{lang === "ar" ? "اختر الألعاب للاستيراد" : "Select Games to Import"}</h3>
+
               <div className="steam-selection-controls">
                 <div className="steam-filter-tabs">
-                  <button className={`tab-btn ${filter === "all" ? "active" : ""}`} onClick={() => setFilter("all")}>
+                  <button
+                    className={`tab-btn ${filter === "all" ? "active" : ""}`}
+                    onClick={() => setFilter("all")}
+                  >
                     {lang === "ar" ? "الكل" : "All"} ({steamGames.length})
                   </button>
-                  <button className={`tab-btn ${filter === "played" ? "active" : ""}`} onClick={() => setFilter("played")}>
-                    {lang === "ar" ? "لُعبت" : "Played"} ({steamGames.filter((g) => g.playtimeMinutes > 0).length})
+
+                  <button
+                    className={`tab-btn ${filter === "played" ? "active" : ""}`}
+                    onClick={() => setFilter("played")}
+                  >
+                    {lang === "ar" ? "لُعبت" : "Played"} (
+                    {steamGames.filter((g) => g.playtimeMinutes > 0).length})
                   </button>
-                  <button className={`tab-btn ${filter === "unplayed" ? "active" : ""}`} onClick={() => setFilter("unplayed")}>
-                    {lang === "ar" ? "لم تُلعب" : "Unplayed"} ({steamGames.filter((g) => g.playtimeMinutes === 0).length})
+
+                  <button
+                    className={`tab-btn ${filter === "unplayed" ? "active" : ""}`}
+                    onClick={() => setFilter("unplayed")}
+                  >
+                    {lang === "ar" ? "لم تُلعب" : "Unplayed"} (
+                    {steamGames.filter((g) => g.playtimeMinutes === 0).length})
                   </button>
                 </div>
+
                 <div className="steam-select-btns">
-                  <button className="btn-ghost btn-sm" onClick={selectAll}>{lang === "ar" ? "تحديد الكل" : "Select All"}</button>
-                  <button className="btn-ghost btn-sm" onClick={deselectAll}>{lang === "ar" ? "إلغاء الكل" : "Deselect All"}</button>
+                  <button className="btn-ghost btn-sm" onClick={selectAll}>
+                    {lang === "ar" ? "تحديد الكل" : "Select All"}
+                  </button>
+                  <button className="btn-ghost btn-sm" onClick={deselectAll}>
+                    {lang === "ar" ? "إلغاء الكل" : "Deselect All"}
+                  </button>
                 </div>
               </div>
             </div>
@@ -281,21 +435,38 @@ export default function SteamImportPage() {
 
             <div className="steam-games-list">
               {filteredGames.map((game) => (
-                <label key={game.appId} className={`steam-game-row ${selectedGames.has(game.appId) ? "selected" : ""}`}>
+                <label
+                  key={game.appId}
+                  className={`steam-game-row ${selectedGames.has(game.appId) ? "selected" : ""}`}
+                >
                   <input
                     type="checkbox"
                     checked={selectedGames.has(game.appId)}
                     onChange={() => toggleGame(game.appId)}
                   />
-                  <img src={game.coverUrl} alt="" className="steam-game-cover" onError={(e) => { e.target.style.display = "none"; }} />
+
+                  <img
+                    src={game.coverUrl}
+                    alt=""
+                    className="steam-game-cover"
+                    onError={(e) => {
+                      e.target.style.display = "none";
+                    }}
+                  />
+
                   <div className="steam-game-info">
                     <strong>{game.name}</strong>
                     <span className="steam-game-playtime">
-                      {game.playtimeHours > 0
-                        ? `${game.playtimeHours} ${lang === "ar" ? "ساعة" : "hours"}`
-                        : (lang === "ar" ? "لم تُلعب" : "Never played")}
+                      {(game.playtimeHours || game.playtimeMinutes > 0)
+                        ? `${game.playtimeHours || Math.round((game.playtimeMinutes / 60) * 10) / 10} ${
+                            lang === "ar" ? "ساعة" : "hours"
+                          }`
+                        : lang === "ar"
+                        ? "لم تُلعب"
+                        : "Never played"}
                     </span>
                   </div>
+
                   <span className="steam-game-status">
                     {game.playtimeMinutes > 120 ? "✅" : game.playtimeMinutes > 0 ? "🎮" : "📋"}
                   </span>
@@ -304,18 +475,28 @@ export default function SteamImportPage() {
             </div>
 
             <div className="steam-import-actions">
-              <button onClick={handleImport} className="btn-primary" disabled={importing || selectedGames.size === 0}>
+              <button
+                onClick={handleImport}
+                className="btn-primary"
+                disabled={importing || selectedGames.size === 0}
+              >
                 {importing
-                  ? (lang === "ar" ? "جاري الاستيراد..." : "Importing...")
-                  : (lang === "ar" ? `استيراد ${selectedGames.size} لعبة` : `Import ${selectedGames.size} Games`)}
+                  ? lang === "ar"
+                    ? "جاري الاستيراد..."
+                    : "Importing..."
+                  : lang === "ar"
+                  ? `استيراد ${selectedGames.size} لعبة`
+                  : `Import ${selectedGames.size} Games`}
               </button>
-              <button onClick={() => setStep("connect")} className="btn-ghost">{t("cancel")}</button>
+
+              <button onClick={() => setStep("connect")} className="btn-ghost">
+                {t("cancel")}
+              </button>
             </div>
           </div>
         </>
       )}
 
-      {/* Step 3: Done */}
       {step === "done" && (
         <div className="steam-done-card">
           <div className="steam-done-icon">✅</div>
@@ -325,9 +506,20 @@ export default function SteamImportPage() {
               ? `تم استيراد ${importedCount} لعبة إلى مكتبتك`
               : `${importedCount} games imported to your library`}
           </p>
+
           <div className="steam-done-actions">
-            <a href="/library" className="btn-primary">{lang === "ar" ? "عرض المكتبة" : "View Library"}</a>
-            <button onClick={() => { setStep("connect"); setSteamGames([]); setSteamProfile(null); }} className="btn-secondary">
+            <a href="/library" className="btn-primary">
+              {lang === "ar" ? "عرض المكتبة" : "View Library"}
+            </a>
+
+            <button
+              onClick={() => {
+                setStep("connect");
+                setSteamGames([]);
+                setSteamProfile(null);
+              }}
+              className="btn-secondary"
+            >
               {lang === "ar" ? "استيراد المزيد" : "Import More"}
             </button>
           </div>

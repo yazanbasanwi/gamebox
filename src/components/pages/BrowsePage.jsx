@@ -2,12 +2,14 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { useLanguage } from "../../context/LanguageContext";
-import { Search, ChevronDown, Play } from "lucide-react";
+import { Search, ChevronDown, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   searchGames, getPopularGames, getRecentGames, getTopRatedGames,
-  getFilteredGames, getCoverURL, formatReleaseDate,
+  getFilteredGames, getCoverURL, formatReleaseDate, getAgeRating,
   GENRE_OPTIONS, PLATFORM_OPTIONS, SORT_OPTIONS, RATING_OPTIONS,
 } from "../../services/igdbService";
+
+const PAGE_SIZE = 20;
 
 export default function BrowsePage() {
   const [searchParams] = useSearchParams();
@@ -17,6 +19,8 @@ export default function BrowsePage() {
   const [activeTab, setActiveTab] = useState("popular");
   const [searchInput, setSearchInput] = useState(queryParam);
   const [showFilters, setShowFilters] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   const { t, lang } = useLanguage();
 
   const [selectedGenre, setSelectedGenre] = useState("all");
@@ -30,43 +34,57 @@ export default function BrowsePage() {
 
   useEffect(() => {
     if (queryParam) { setSearchInput(queryParam); handleSearch(queryParam); }
-    else { loadGames(activeTab); }
+    else { loadGames(activeTab, 0); }
   }, [queryParam]);
 
-  async function loadGames(tab) {
-    setLoading(true); setActiveTab(tab);
+  async function loadGames(tab, pageNum = 0) {
+    setLoading(true); setActiveTab(tab); setPage(pageNum);
+    const offset = pageNum * PAGE_SIZE;
     try {
       let results;
       switch (tab) {
-        case "recent": results = await getRecentGames(); break;
-        case "top": results = await getTopRatedGames(); break;
-        default: results = await getPopularGames();
+        case "recent": results = await getRecentGames(PAGE_SIZE, offset); break;
+        case "top": results = await getTopRatedGames(PAGE_SIZE, offset); break;
+        default: results = await getPopularGames(PAGE_SIZE, offset);
       }
       setGames(results || []);
+      setHasMore((results || []).length === PAGE_SIZE);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   }
 
   async function handleSearch(q = searchInput) {
-    if (!q.trim()) return isFiltered ? applyFilters() : loadGames(activeTab);
-    setLoading(true);
-    try { setGames((await searchGames(q.trim())) || []); }
+    if (!q.trim()) return isFiltered ? applyFilters(0) : loadGames(activeTab, 0);
+    setLoading(true); setPage(0);
+    try { setGames((await searchGames(q.trim())) || []); setHasMore(false); }
     catch (err) { console.error(err); }
     finally { setLoading(false); }
   }
 
-  async function applyFilters() {
-    setLoading(true);
+  async function applyFilters(pageNum = 0) {
+    setLoading(true); setPage(pageNum);
+    const offset = pageNum * PAGE_SIZE;
     try {
-      const results = await getFilteredGames({ genre: selectedGenre, platform: selectedPlatform, minRating: selectedRating, hasArabic: arabicOnly, sortBy: selectedSort, count: 40 });
+      const results = await getFilteredGames({
+        genre: selectedGenre, platform: selectedPlatform, minRating: selectedRating,
+        hasArabic: arabicOnly, sortBy: selectedSort, count: PAGE_SIZE, offset,
+      });
       setGames(results);
+      setHasMore(!arabicOnly && results.length === PAGE_SIZE);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   }
 
   function clearFilters() {
-    setSelectedGenre("all"); setSelectedPlatform("all"); setSelectedRating(0); setSelectedSort("popular"); setArabicOnly(false);
-    loadGames(activeTab);
+    setSelectedGenre("all"); setSelectedPlatform("all"); setSelectedRating(0);
+    setSelectedSort("popular"); setArabicOnly(false);
+    loadGames(activeTab, 0);
+  }
+
+  function goToPage(newPage) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (isFiltered) applyFilters(newPage);
+    else loadGames(activeTab, newPage);
   }
 
   function getOptionName(option) { return lang === "ar" ? (option.nameAr || option.name) : option.name; }
@@ -79,7 +97,6 @@ export default function BrowsePage() {
 
   return (
     <div className="browse-page">
-      {/* Sticky header */}
       <header>
         <div>
           <div className="browse-top-bar">
@@ -98,7 +115,7 @@ export default function BrowsePage() {
           <div className="browse-filter-row">
             <div className="browse-tabs">
               {TABS.map(({ key, label }) => (
-                <button key={key} className={`browse-tab ${activeTab === key && !isFiltered ? "active" : ""}`} onClick={() => loadGames(key)}>{label}</button>
+                <button key={key} className={`browse-tab ${activeTab === key && !isFiltered ? "active" : ""}`} onClick={() => loadGames(key, 0)}>{label}</button>
               ))}
             </div>
             <div className="filter-pills">
@@ -107,15 +124,10 @@ export default function BrowsePage() {
                 {activeFilterCount > 0 && <span style={{ background: "var(--accent)", color: "white", borderRadius: "50%", width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem", fontWeight: 700 }}>{activeFilterCount}</span>}
                 <ChevronDown size={12} />
               </button>
-              {activeFilterCount > 0 && (
-                <button className="filter-pill" onClick={clearFilters} style={{ color: "var(--danger)" }}>
-                  {lang === "ar" ? "مسح" : "Clear"}
-                </button>
-              )}
+              {activeFilterCount > 0 && <button className="filter-pill" onClick={clearFilters} style={{ color: "var(--danger)" }}>{lang === "ar" ? "مسح" : "Clear"}</button>}
             </div>
           </div>
 
-          {/* Filter panel */}
           {showFilters && (
             <div className="filter-panel-dropdown">
               <div className="filter-grid">
@@ -150,14 +162,13 @@ export default function BrowsePage() {
                   <span>🇸🇦 {lang === "ar" ? "ألعاب تدعم العربية فقط" : "Arabic supported games only"}</span>
                 </label>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button onClick={applyFilters} className="btn-primary btn-sm">{lang === "ar" ? "تطبيق" : "Apply"}</button>
+                  <button onClick={() => applyFilters(0)} className="btn-primary btn-sm">{lang === "ar" ? "تطبيق" : "Apply"}</button>
                   {isFiltered && <button onClick={clearFilters} className="btn-ghost btn-sm">{lang === "ar" ? "مسح" : "Clear"}</button>}
                 </div>
               </div>
             </div>
           )}
 
-          {/* Active filter chips */}
           {isFiltered && (
             <div className="active-chips" style={{ marginTop: "0.75rem" }}>
               {selectedGenre !== "all" && <span className="chip">{getOptionName(GENRE_OPTIONS.find(g => String(g.id) === String(selectedGenre)) || {})} <button onClick={() => setSelectedGenre("all")}>×</button></span>}
@@ -169,32 +180,62 @@ export default function BrowsePage() {
         </div>
       </header>
 
-      {/* Results */}
       {loading ? (
         <div className="loading-screen"><div className="spinner" /><p>{t("loadingGames")}</p></div>
       ) : games.length === 0 ? (
         <div className="empty-state"><p>{t("noGamesFound")}</p>{isFiltered && <button onClick={clearFilters} className="btn-primary" style={{ marginTop: "1rem" }}>{lang === "ar" ? "مسح الفلاتر" : "Clear Filters"}</button>}</div>
       ) : (
         <>
-          <p className="results-count">{lang === "ar" ? `${games.length} لعبة` : `${games.length} games`}</p>
+          <p className="results-count">
+            {lang === "ar" ? `${games.length} لعبة` : `${games.length} games`}
+            {page > 0 && <span style={{ marginLeft: "0.5rem", color: "var(--text-muted)" }}>— {lang === "ar" ? `الصفحة ${page + 1}` : `Page ${page + 1}`}</span>}
+          </p>
           <div className="games-grid">
-            {games.map(game => (
-              <Link to={`/game/${game.id}`} key={game.id} className="game-card">
-                <div className="game-card-cover">
-                  <img src={getCoverURL(game)} alt={game.name} loading="lazy" />
-                  <div className="play-overlay"><div className="play-btn"><Play size={18} color="white" fill="white" /></div></div>
-                </div>
-                <div className="game-card-info">
-                  <h3>{game.name}</h3>
-                  <div className="game-card-meta">
-                    <span>{formatReleaseDate(game.first_release_date)?.split(",")[1]?.trim() || "TBA"}</span>
-                    {game.total_rating && <span className="game-rating-badge">⭐ {Math.round(game.total_rating)}</span>}
+            {games.map(game => {
+              const ageRating = getAgeRating(game);
+              return (
+                <Link to={`/game/${game.id}`} key={game.id} className="game-card">
+                  <div className="game-card-cover">
+                    <img src={getCoverURL(game)} alt={game.name} loading="lazy" />
+                    <div className="play-overlay"><div className="play-btn"><Play size={18} color="white" fill="white" /></div></div>
+                    {ageRating && <span className={`card-age-badge age-${ageRating.label.replace("+","plus").replace(" ","")}`}>{ageRating.label}</span>}
                   </div>
-                  {game.genres?.[0] && <span className="genre-tag">{game.genres[0].name}</span>}
-                  {game.language_supports?.some(ls => ls.language?.name === "Arabic") && <span className="arabic-badge" style={{ marginTop: 4 }}>🇸🇦 {lang === "ar" ? "عربي" : "Arabic"}</span>}
-                </div>
-              </Link>
-            ))}
+                  <div className="game-card-info">
+                    <h3>{game.name}</h3>
+                    <div className="game-card-meta">
+                      <span>{formatReleaseDate(game.first_release_date)?.split(",")[1]?.trim() || "TBA"}</span>
+                      {game.total_rating && <span className="game-rating-badge">⭐ {Math.round(game.total_rating)}</span>}
+                    </div>
+                    {game.genres?.[0] && <span className="genre-tag">{game.genres[0].name}</span>}
+                    {game.language_supports?.some(ls => ls.language?.name === "Arabic") && (
+                      <span className="arabic-badge" style={{ marginTop: 4 }}>🇸🇦 {lang === "ar" ? "عربي" : "Arabic"}</span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="pagination-controls">
+            <button
+              className="pagination-btn"
+              onClick={() => goToPage(page - 1)}
+              disabled={page === 0}
+            >
+              <ChevronLeft size={16} />
+              {lang === "ar" ? "السابق" : "Previous"}
+            </button>
+            <span className="pagination-info">
+              {lang === "ar" ? `الصفحة ${page + 1}` : `Page ${page + 1}`}
+            </span>
+            <button
+              className="pagination-btn"
+              onClick={() => goToPage(page + 1)}
+              disabled={!hasMore}
+            >
+              {lang === "ar" ? "التالي" : "Next"}
+              <ChevronRight size={16} />
+            </button>
           </div>
         </>
       )}

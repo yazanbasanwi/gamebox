@@ -1,12 +1,4 @@
-// src/services/igdbService.js
-// ============================================================
-// IGDB Game Data Service
-// ============================================================
-// All requests go through the Express backend proxy at /api/igdb
-// The backend handles Twitch OAuth — NO secrets in the frontend
-// ============================================================
-
-const IGDB_PROXY_URL = process.env.REACT_APP_IGDB_PROXY_URL || "http://localhost:5000/api/igdb";
+const IGDB_PROXY_URL = process.env.REACT_APP_IGDB_PROXY_URL || "http://localhost:3001/api/igdb";
 
 async function igdbFetch(endpoint, body) {
   const response = await fetch(`${IGDB_PROXY_URL}/${endpoint}`, {
@@ -18,14 +10,11 @@ async function igdbFetch(endpoint, body) {
   return response.json();
 }
 
-// ──────────────────────────────────────────────
-// Game Queries
-// ──────────────────────────────────────────────
-
 const GAME_FIELDS = `name, cover.image_id, genres.name, genres.id, platforms.name, platforms.id,
   first_release_date, rating, rating_count, summary,
   involved_companies.company.name, involved_companies.developer, involved_companies.publisher,
-  total_rating, total_rating_count, language_supports.language.name, language_supports.language_support_type.name`;
+  total_rating, total_rating_count, language_supports.language.name, language_supports.language_support_type.name,
+  age_ratings.rating, age_ratings.category`;
 
 const DETAIL_FIELDS = `${GAME_FIELDS}, storyline, screenshots.image_id, videos.video_id, videos.name,
   similar_games.name, similar_games.cover.image_id, similar_games.id,
@@ -36,19 +25,19 @@ export async function searchGames(searchQuery, count = 20) {
   return igdbFetch("games", body);
 }
 
-export async function getPopularGames(count = 20) {
-  const body = `fields ${GAME_FIELDS}; sort total_rating_count desc; where total_rating_count > 100 & cover != null; limit ${count};`;
+export async function getPopularGames(count = 20, offset = 0) {
+  const body = `fields ${GAME_FIELDS}; sort total_rating_count desc; where total_rating_count > 100 & cover != null; limit ${count}; offset ${offset};`;
   return igdbFetch("games", body);
 }
 
-export async function getRecentGames(count = 20) {
+export async function getRecentGames(count = 20, offset = 0) {
   const now = Math.floor(Date.now() / 1000);
-  const body = `fields ${GAME_FIELDS}; sort first_release_date desc; where first_release_date < ${now} & cover != null; limit ${count};`;
+  const body = `fields ${GAME_FIELDS}; sort first_release_date desc; where first_release_date < ${now} & cover != null; limit ${count}; offset ${offset};`;
   return igdbFetch("games", body);
 }
 
-export async function getTopRatedGames(count = 20) {
-  const body = `fields ${GAME_FIELDS}; sort total_rating desc; where total_rating_count > 50 & cover != null & total_rating > 80; limit ${count};`;
+export async function getTopRatedGames(count = 20, offset = 0) {
+  const body = `fields ${GAME_FIELDS}; sort total_rating desc; where total_rating_count > 50 & cover != null & total_rating > 80; limit ${count}; offset ${offset};`;
   return igdbFetch("games", body);
 }
 
@@ -58,30 +47,14 @@ export async function getGameDetails(gameId) {
   return results[0] || null;
 }
 
-// ──────────────────────────────────────────────
-// Filtered Browse — genre, platform, rating, Arabic support
-// ──────────────────────────────────────────────
-
-export async function getFilteredGames({ genre, platform, minRating, hasArabic, sortBy, count = 30 }) {
+export async function getFilteredGames({ genre, platform, minRating, hasArabic, sortBy, count = 30, offset = 0 }) {
   let conditions = ["cover != null", "version_parent = null"];
-
-  // Genre filter (IGDB genre IDs)
-  if (genre && genre !== "all") {
-    conditions.push(`genres = (${genre})`);
-  }
-
-  // Platform filter (IGDB platform IDs)
-  if (platform && platform !== "all") {
-    conditions.push(`platforms = (${platform})`);
-  }
-
-  // Minimum rating filter
+  if (genre && genre !== "all") conditions.push(`genres = (${genre})`);
+  if (platform && platform !== "all") conditions.push(`platforms = (${platform})`);
   if (minRating && minRating > 0) {
     conditions.push(`total_rating >= ${minRating}`);
     conditions.push(`total_rating_count > 5`);
   }
-
-  // Sort
   let sort = "sort total_rating_count desc";
   if (sortBy === "rating") sort = "sort total_rating desc";
   else if (sortBy === "newest") sort = "sort first_release_date desc";
@@ -89,46 +62,30 @@ export async function getFilteredGames({ genre, platform, minRating, hasArabic, 
   else if (sortBy === "oldest") sort = "sort first_release_date asc";
 
   const whereClause = conditions.join(" & ");
-  const body = `fields ${GAME_FIELDS}; ${sort}; where ${whereClause}; limit ${count};`;
-
+  const fetchCount = hasArabic ? 200 : count;
+  const body = `fields ${GAME_FIELDS}; ${sort}; where ${whereClause}; limit ${fetchCount}; offset ${hasArabic ? 0 : offset};`;
   let results = await igdbFetch("games", body);
 
-  // Arabic language filter — applied client-side since IGDB language_supports is nested
   if (hasArabic && results) {
-    results = results.filter((game) => {
-      if (!game.language_supports) return false;
-      return game.language_supports.some(
-        (ls) => ls.language?.name === "Arabic"
-      );
-    });
+    results = results.filter((game) =>
+      game.language_supports?.some((ls) => ls.language?.name === "Arabic")
+    );
   }
-
   return results || [];
 }
 
-// ──────────────────────────────────────────────
-// Get genres and platforms for filter dropdowns
-// ──────────────────────────────────────────────
-
 export async function getGenres() {
-  const body = `fields id, name, slug; sort name asc; limit 50;`;
-  return igdbFetch("genres", body);
+  return igdbFetch("genres", `fields id, name, slug; sort name asc; limit 50;`);
 }
 
 export async function getPlatforms() {
-  const body = `fields id, name, slug; sort name asc; where category = (1,5,6); limit 50;`;
-  // category 1=console, 5=portable, 6=platform
-  return igdbFetch("platforms", body);
+  return igdbFetch("platforms", `fields id, name, slug; sort name asc; where category = (1,5,6); limit 50;`);
 }
 
 export async function getGamesByGenre(genreId, count = 20) {
   const body = `fields ${GAME_FIELDS}; where genres = (${genreId}) & cover != null; sort total_rating desc; limit ${count};`;
   return igdbFetch("games", body);
 }
-
-// ──────────────────────────────────────────────
-// Image URL Helpers
-// ──────────────────────────────────────────────
 
 export function getImageURL(imageId, size = "cover_big") {
   if (!imageId) return "/placeholder-game.png";
@@ -147,9 +104,31 @@ export function formatReleaseDate(timestamp) {
   });
 }
 
-// ──────────────────────────────────────────────
-// Constants for filters
-// ──────────────────────────────────────────────
+const ESRB_MAP = { 6: "RP", 7: "EC", 8: "E", 9: "E10+", 10: "T", 11: "M", 12: "AO" };
+const PEGI_MAP = { 1: "3", 2: "7", 3: "12", 4: "16", 5: "18" };
+
+export function getAgeRating(game) {
+  if (!game?.age_ratings?.length) return null;
+  const esrb = game.age_ratings.find((r) => r.category === 1);
+  if (esrb) return { label: ESRB_MAP[esrb.rating] || "RP", system: "ESRB" };
+  const pegi = game.age_ratings.find((r) => r.category === 2);
+  if (pegi) return { label: `${PEGI_MAP[pegi.rating] || "?"}+`, system: "PEGI" };
+  return null;
+}
+
+export function getAccessibilityFeatures(game) {
+  if (!game?.language_supports?.length) return [];
+  const features = [];
+  const hasSubtitles = game.language_supports.some((ls) =>
+    ls.language_support_type?.name?.toLowerCase().includes("subtitle")
+  );
+  const audioCount = game.language_supports.filter((ls) =>
+    ls.language_support_type?.name?.toLowerCase().includes("audio")
+  ).length;
+  if (hasSubtitles) features.push("Subtitles");
+  if (audioCount > 1) features.push("Multiple Audio Languages");
+  return features;
+}
 
 export const GENRE_OPTIONS = [
   { id: "all", name: "All Genres", nameAr: "جميع الأنواع" },

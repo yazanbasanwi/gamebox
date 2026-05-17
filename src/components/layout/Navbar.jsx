@@ -4,33 +4,69 @@ import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { Search, Gamepad2, Settings, BookOpen, Library, List, Users, Star, SplitSquareHorizontal, Home } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { searchGames, getImageURL } from "../../services/igdbService";
 import toast from "react-hot-toast";
 
 export default function Navbar() {
   const { currentUser, userProfile, logout } = useAuth();
   const { t, lang, toggleLanguage } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
   const menuRef = useRef(null);
+  const searchRef = useRef(null);
+  const searchTimerRef = useRef(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(e) {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setMenuOpen(false);
-      }
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+      if (searchRef.current && !searchRef.current.contains(e.target)) setShowDropdown(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  function handleSearchInput(e) {
+    const val = e.target.value;
+    setSearchQuery(val);
+    clearTimeout(searchTimerRef.current);
+    if (val.trim().length < 2) {
+      setShowDropdown(false);
+      setSearchResults([]);
+      return;
+    }
+    searchTimerRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const results = await searchGames(val.trim(), 6);
+        setSearchResults(results || []);
+        setShowDropdown(true);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 350);
+  }
 
   function handleSearch(e) {
     e.preventDefault();
     if (searchQuery.trim()) {
       navigate(`/browse?q=${encodeURIComponent(searchQuery.trim())}`);
       setSearchQuery("");
+      setShowDropdown(false);
+      setSearchResults([]);
     }
+  }
+
+  function handleResultClick(gameId) {
+    navigate(`/game/${gameId}`);
+    setSearchQuery("");
+    setShowDropdown(false);
+    setSearchResults([]);
   }
 
   async function handleLogout() {
@@ -49,7 +85,6 @@ export default function Navbar() {
   return (
     <nav className="navbar">
       <div className="nav-container">
-        {/* Logo */}
         <Link to="/" className="nav-logo">
           <div className="logo-icon-box">
             <Gamepad2 size={18} color="white" />
@@ -57,7 +92,6 @@ export default function Navbar() {
           <span className="logo-text">GAME<span className="logo-accent">BOX</span></span>
         </Link>
 
-        {/* Nav links */}
         <div className="nav-links">
           <NavLink to="/" end>{t("home")}</NavLink>
           <NavLink to="/browse">{t("games")}</NavLink>
@@ -66,33 +100,86 @@ export default function Navbar() {
           <NavLink to="/community">{t("community")}</NavLink>
           {currentUser && (
             <>
-              <NavLink to="/library">{t("library")}</NavLink>
-              <NavLink to="/lists">{t("lists")}</NavLink>
-              <NavLink to="/journal">{t("journal")}</NavLink>
+              <NavLink to="/library" className="nav-link-secondary">{t("library")}</NavLink>
+              <NavLink to="/lists" className="nav-link-secondary">{t("lists")}</NavLink>
+              <NavLink to="/journal" className="nav-link-secondary">{t("journal")}</NavLink>
             </>
           )}
           {userProfile?.role === "admin" && <NavLink to="/admin">{t("admin")}</NavLink>}
         </div>
 
         <div className="nav-right">
-          {/* Search */}
-          <form onSubmit={handleSearch} className="nav-search-form">
-            <Search size={15} className="search-icon" />
-            <input
-              type="text"
-              placeholder={lang === "ar" ? "ابحث عن ألعاب، مستخدمين..." : "Search games, users..."}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="nav-search-input"
-            />
-          </form>
+          {/* Search with live dropdown */}
+          <div className="nav-search-wrapper" ref={searchRef}>
+            <form onSubmit={handleSearch} className="nav-search-form">
+              <Search size={15} className="search-icon" />
+              <input
+                type="text"
+                placeholder={lang === "ar" ? "ابحث عن لعبة..." : "Search games..."}
+                value={searchQuery}
+                onChange={handleSearchInput}
+                onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
+                className="nav-search-input"
+                autoComplete="off"
+              />
+            </form>
 
-          {/* Language toggle */}
+            {showDropdown && (
+              <div className="search-dropdown">
+                {searchLoading ? (
+                  <div className="search-dropdown-status">
+                    <div className="spinner-sm" />
+                    {lang === "ar" ? "جارٍ البحث..." : "Searching..."}
+                  </div>
+                ) : searchResults.length === 0 ? (
+                  <div className="search-dropdown-status">
+                    {lang === "ar" ? "لا نتائج" : "No results found"}
+                  </div>
+                ) : (
+                  <>
+                    {searchResults.map(game => (
+                      <button
+                        key={game.id}
+                        className="search-dropdown-item"
+                        onClick={() => handleResultClick(game.id)}
+                      >
+                        <img
+                          src={getImageURL(game.cover?.image_id, "cover_small")}
+                          alt={game.name}
+                          className="search-dropdown-cover"
+                          onError={e => { e.target.src = "/placeholder-game.png"; }}
+                        />
+                        <div className="search-dropdown-info">
+                          <span className="search-dropdown-name">{game.name}</span>
+                          {game.first_release_date && (
+                            <span className="search-dropdown-year">
+                              {new Date(game.first_release_date * 1000).getFullYear()}
+                            </span>
+                          )}
+                        </div>
+                        {game.total_rating && (
+                          <span className="search-dropdown-rating">
+                            ★ {Math.round(game.total_rating)}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                    <button
+                      className="search-dropdown-see-all"
+                      onClick={handleSearch.bind(null, { preventDefault: () => {} })}
+                    >
+                      {lang === "ar" ? `عرض كل النتائج لـ "${searchQuery}"` : `See all results for "${searchQuery}"`}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
           <button className="lang-toggle" onClick={toggleLanguage}>
             {lang === "en" ? "عربي" : "EN"}
           </button>
 
-          {/* User menu or auth buttons */}
           {currentUser ? (
             <div className="nav-user" ref={menuRef}>
               <button className="nav-avatar-btn" onClick={() => setMenuOpen(!menuOpen)}>
@@ -128,6 +215,9 @@ export default function Navbar() {
                   <Link to="/settings" onClick={() => setMenuOpen(false)}>
                     <Settings size={14} /> {lang === "ar" ? "الإعدادات" : "Settings"}
                   </Link>
+                  <a href="mailto:support@gamebox.app" className="dropdown-support-link">
+                    📧 {lang === "ar" ? "تواصل مع الدعم" : "Contact Support"}
+                  </a>
                   <button onClick={handleLogout} className="dropdown-logout">
                     {lang === "ar" ? "🚪 تسجيل الخروج" : "🚪 Log Out"}
                   </button>

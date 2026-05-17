@@ -8,7 +8,7 @@ import { useLanguage } from "../../context/LanguageContext";
 import { Heart, Flag } from "lucide-react";
 import toast from "react-hot-toast";
 
-const AI_API_URL = process.env.REACT_APP_IGDB_PROXY_URL?.replace("/api/igdb", "/api/ai/recommend") || "http://localhost:3001/api/ai/recommend";
+const AI_API_URL = "/api/ai/recommend";
 
 export default function FeedPage() {
   const [reviews, setReviews] = useState([]);
@@ -33,13 +33,12 @@ export default function FeedPage() {
     setLoadingRecs(true);
     setRecError("");
     try {
-      const [library, userRevs] = await Promise.all([
-        getUserLibrary(currentUser.uid),
-        getUserReviews(currentUser.uid),
-      ]);
+      let library = [], userRevs = [];
+      try { library = await getUserLibrary(currentUser.uid); } catch { library = []; }
+      try { userRevs = await getUserReviews(currentUser.uid); } catch { userRevs = []; }
 
       if (library.length === 0 && userRevs.length === 0) {
-        setRecError(t("addGamesForRecs"));
+        setRecError(t("addGamesForRecs") || (lang === "ar" ? "أضف ألعاباً لاحتياجاتك للحصول على توصيات" : "Add some games to your library to get recommendations"));
         setLoadingRecs(false);
         return;
       }
@@ -129,7 +128,7 @@ export default function FeedPage() {
                     </div>
                     <span className="feed-rating">{"★".repeat(Math.round(review.weightedScore||review.overallRating))} {review.weightedScore||review.overallRating}/5</span>
                   </div>
-                  {review.gameCover && <img src={getImageURL(review.gameCover, "cover_small")} alt="" className="feed-cover" />}
+                  {review.gameCover && <img src={getImageURL(review.gameCover, "cover_big")} alt="" className="feed-cover" />}
                   {review.textContent && <p className="feed-text">{review.textContent}</p>}
                   <div className="feed-actions">
                     <button

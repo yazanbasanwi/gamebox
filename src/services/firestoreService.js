@@ -19,6 +19,7 @@ import {
   arrayUnion,
   arrayRemove,
   increment,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
 
@@ -65,13 +66,21 @@ export async function getGameReviews(gameId) {
 }
 
 export async function getUserReviews(userId) {
-  const q = query(
-    collection(db, "reviews"),
-    where("userId", "==", userId),
-    orderBy("createdAt", "desc")
-  );
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  try {
+    const q = query(
+      collection(db, "reviews"),
+      where("userId", "==", userId),
+      orderBy("createdAt", "desc")
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  } catch (err) {
+    // Fallback: fetch without orderBy if composite index doesn't exist
+    const q2 = query(collection(db, "reviews"), where("userId", "==", userId));
+    const snapshot2 = await getDocs(q2);
+    const docs = snapshot2.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+  }
 }
 
 export async function getLatestReviews(count = 20) {
@@ -180,17 +189,17 @@ export async function removeFromLibrary(userId, gameId) {
 // ──────────────────────────────────────────────
 
 export async function followUser(currentUserId, targetUserId) {
-  const currentUserRef = doc(db, "users", currentUserId);
-  const targetUserRef = doc(db, "users", targetUserId);
-  await updateDoc(currentUserRef, { following: arrayUnion(targetUserId) });
-  await updateDoc(targetUserRef, { followers: arrayUnion(currentUserId) });
+  const batch = writeBatch(db);
+  batch.update(doc(db, "users", currentUserId), { following: arrayUnion(targetUserId) });
+  batch.update(doc(db, "users", targetUserId), { followers: arrayUnion(currentUserId) });
+  await batch.commit();
 }
 
 export async function unfollowUser(currentUserId, targetUserId) {
-  const currentUserRef = doc(db, "users", currentUserId);
-  const targetUserRef = doc(db, "users", targetUserId);
-  await updateDoc(currentUserRef, { following: arrayRemove(targetUserId) });
-  await updateDoc(targetUserRef, { followers: arrayRemove(currentUserId) });
+  const batch = writeBatch(db);
+  batch.update(doc(db, "users", currentUserId), { following: arrayRemove(targetUserId) });
+  batch.update(doc(db, "users", targetUserId), { followers: arrayRemove(currentUserId) });
+  await batch.commit();
 }
 
 // ──────────────────────────────────────────────

@@ -17,7 +17,7 @@ export default function CommunityPage() {
   useEffect(() => { loadUsers(); }, []);
 
   async function loadUsers() {
-    try { setUsers((await getAllUsers()).filter((u) => u.id !== currentUser?.uid && u.role !== "banned")); }
+    try { setUsers((await getAllUsers()).filter((u) => u.role !== "banned")); }
     catch (err) { console.error(err); }
     finally { setLoading(false); }
   }
@@ -60,9 +60,11 @@ export default function CommunityPage() {
       ) : (
         <div className="community-grid">
           {filtered.map((user) => {
+            const isMe = user.id === currentUser?.uid;
             const isFollowing = userProfile?.following?.includes(user.id);
             return (
-              <div key={user.id} className="community-card">
+              <div key={user.id} className={`community-card${isMe ? " community-card-mine" : ""}`}>
+                {isMe && <span className="community-me-badge">{t("lang") === "ar" ? "أنت" : "You"}</span>}
                 <div className="community-avatar">
                   {user.avatarURL
                     ? <img src={user.avatarURL} alt="" />
@@ -70,17 +72,22 @@ export default function CommunityPage() {
                   }
                 </div>
                 <div className="community-info">
-                  <Link to={`/user/${user.id}`}><strong>{user.displayName || user.username || "User"}</strong></Link>
+                  <Link to={isMe ? "/profile" : `/user/${user.id}`}>
+                    <strong>{user.displayName || user.username || "User"}</strong>
+                  </Link>
                   <span className="community-stats">{user.followers?.length || 0} {t("followers")}</span>
                   {user.bio && <p className="community-bio">{user.bio.slice(0, 80)}{user.bio.length > 80 ? "..." : ""}</p>}
                 </div>
-                {currentUser && (
+                {currentUser && !isMe && (
                   <button
                     onClick={() => handleFollow(user.id)}
                     className={isFollowing ? "btn-secondary btn-sm" : "btn-primary btn-sm"}
                   >
                     {isFollowing ? t("unfollow") : t("follow")}
                   </button>
+                )}
+                {isMe && (
+                  <Link to="/profile" className="btn-ghost btn-sm">{t("lang") === "ar" ? "ملفي" : "My Profile"}</Link>
                 )}
               </div>
             );

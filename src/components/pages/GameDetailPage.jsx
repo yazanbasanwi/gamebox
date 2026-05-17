@@ -8,7 +8,7 @@ import { createReview, getGameReviews, addToLibrary, toggleReviewLike, addCommen
 import { Heart, MessageCircle, CornerDownRight, Flag, Volume2, VolumeX, Mic, MicOff } from "lucide-react";
 import toast from "react-hot-toast";
 
-const MODERATE_URL = process.env.REACT_APP_IGDB_PROXY_URL?.replace("/api/igdb", "/api/ai/moderate") || "http://localhost:3001/api/ai/moderate";
+const MODERATE_URL = "/api/ai/moderate";
 
 function StarRating({ value, onChange, label }) {
   return (

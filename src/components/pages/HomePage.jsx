@@ -1,12 +1,21 @@
 // src/components/pages/HomePage.jsx
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { Sparkles, Star, Library, ArrowRight } from "lucide-react";
+import { getPopularGames, getCoverURL } from "../../services/igdbService";
 
 export default function HomePage() {
   const { currentUser } = useAuth();
   const { t, lang } = useLanguage();
+  const [featureGames, setFeatureGames] = useState([]);
+
+  useEffect(() => {
+    getPopularGames(6).then(games => {
+      if (games?.length) setFeatureGames(games);
+    }).catch(() => {});
+  }, []);
 
   return (
     <div className="home-page">
@@ -21,9 +30,9 @@ export default function HomePage() {
           </div>
           <h1>
             {lang === "ar" ? (
-              <>سجّل ألعابك.<br /><span className="gradient-text">اكتشف هوسك القادم.</span></>
+              <>سجّل. قيّم.<br /><span className="gradient-text">اكتشف ما هو قادم.</span></>
             ) : (
-              <>Log your plays.<br /><span className="gradient-text">Find your next obsession.</span></>
+              <>Rate. Review.<br /><span className="gradient-text">Discover more.</span></>
             )}
           </h1>
           <p className="hero-sub">
@@ -56,7 +65,7 @@ export default function HomePage() {
       <section className="features-section">
         <div>
           <div className="features-grid">
-            {/* Feature 1 */}
+            {/* Feature 1 — Flexible Reviews */}
             <div className="feature-card">
               <div className="feature-icon-box">
                 <Star size={22} color="var(--accent-light)" />
@@ -80,7 +89,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Feature 2 */}
+            {/* Feature 2 — AI Recommendations */}
             <div className="feature-card">
               <div className="feature-icon-box">
                 <Sparkles size={22} color="var(--accent-light)" />
@@ -91,15 +100,28 @@ export default function HomePage() {
                 : "Our AI engine analyzes your library, playtime, and ratings to suggest titles you're guaranteed to love."
               }</p>
               <div className="feature-demo" style={{ display: "flex", alignItems: "center", gap: "0.875rem" }}>
-                <div style={{ width: 48, height: 64, borderRadius: 6, background: "linear-gradient(to bottom, #6366f1, #7c3aed)", flexShrink: 0, boxShadow: "0 4px 12px rgba(0,0,0,0.4)" }} />
+                {featureGames[0] ? (
+                  <img
+                    src={getCoverURL(featureGames[0], "cover_small")}
+                    alt={featureGames[0].name}
+                    style={{ width: 48, height: 64, borderRadius: 6, objectFit: "cover", flexShrink: 0, boxShadow: "0 4px 12px rgba(0,0,0,0.4)" }}
+                    onError={e => { e.target.style.background = "linear-gradient(to bottom, #6366f1, #7c3aed)"; e.target.style.display = "none"; }}
+                  />
+                ) : (
+                  <div style={{ width: 48, height: 64, borderRadius: 6, background: "linear-gradient(to bottom, #6366f1, #7c3aed)", flexShrink: 0, boxShadow: "0 4px 12px rgba(0,0,0,0.4)" }} />
+                )}
                 <div>
-                  <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-primary)" }}>Cybernetic Souls</div>
-                  <div style={{ fontSize: "0.72rem", color: "var(--accent-light)", marginTop: 4 }}>98% {lang === "ar" ? "تطابق" : "Match"}</div>
+                  <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--text-primary)" }}>
+                    {featureGames[0]?.name || "Cybernetic Souls"}
+                  </div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--accent-light)", marginTop: 4 }}>
+                    98% {lang === "ar" ? "تطابق" : "Match"}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Feature 3 */}
+            {/* Feature 3 — Game Library */}
             <div className="feature-card">
               <div className="feature-icon-box">
                 <Library size={22} color="var(--accent-light)" />
@@ -109,15 +131,30 @@ export default function HomePage() {
                 ? "تتبع كل شيء لعبته أو تلعبه أو تريد لعبه. أنشئ مجموعات مخصصة وشاركها مع الأصدقاء."
                 : "Track everything you've played, are playing, or want to play. Build custom collections and share them with friends."
               }</p>
-              <div className="feature-demo" style={{ display: "flex", gap: -8 }}>
-                {[
+              <div className="feature-demo" style={{ display: "flex" }}>
+                {featureGames.slice(1, 4).map((game, i) => (
+                  <img
+                    key={game.id}
+                    src={getCoverURL(game, "cover_small")}
+                    alt={game.name}
+                    style={{
+                      width: 48, height: 64, borderRadius: 6, objectFit: "cover",
+                      marginLeft: i > 0 ? -10 : 0,
+                      border: "2px solid var(--bg-card)",
+                      boxShadow: "var(--shadow)",
+                      flexShrink: 0,
+                    }}
+                    onError={e => { e.target.style.display = "none"; }}
+                  />
+                ))}
+                {featureGames.length < 2 && [
                   "linear-gradient(135deg, #059669, #34d399)",
                   "linear-gradient(135deg, #dc2626, #fb923c)",
                   "linear-gradient(135deg, #2563eb, #67e8f9)",
                 ].map((bg, i) => (
-                  <div key={i} style={{ width: 48, height: 64, borderRadius: 6, background: bg, marginLeft: i > 0 ? -8 : 0, border: "2px solid var(--bg-card)", boxShadow: "var(--shadow)" }} />
+                  <div key={i} style={{ width: 48, height: 64, borderRadius: 6, background: bg, marginLeft: i > 0 ? -10 : 0, border: "2px solid var(--bg-card)", boxShadow: "var(--shadow)" }} />
                 ))}
-                <div style={{ width: 48, height: 64, borderRadius: 6, background: "var(--bg-elevated)", marginLeft: -8, border: "2px solid var(--bg-card)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)" }}>+42</div>
+                <div style={{ width: 48, height: 64, borderRadius: 6, background: "var(--bg-elevated)", marginLeft: -10, border: "2px solid var(--bg-card)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)" }}>+42</div>
               </div>
             </div>
           </div>

@@ -8,41 +8,59 @@ import { useLanguage } from "../../context/LanguageContext";
 import { Heart, Flag } from "lucide-react";
 import toast from "react-hot-toast";
 
+// Backend endpoint used to request AI-based game recommendations.
 const AI_API_URL = "/api/ai/recommend";
 
+// Main page component that displays community reviews and AI recommendations.
 export default function FeedPage() {
+  // Stores the latest community reviews shown in the feed.
   const [reviews, setReviews] = useState([]);
+  // Controls the loading screen while reviews are being fetched.
   const [loading, setLoading] = useState(true);
+  // Stores AI game recommendations returned from the backend.
   const [recommendations, setRecommendations] = useState([]);
+  // Stores the AI explanation/analysis of the user taste.
   const [aiAnalysis, setAiAnalysis] = useState("");
+  // Tracks whether AI recommendations are currently loading.
   const [loadingRecs, setLoadingRecs] = useState(false);
+  // Stores any error message related to recommendations.
   const [recError, setRecError] = useState("");
+  // Maps recommended game names to cover images and game IDs from IGDB.
   const [recGameCovers, setRecGameCovers] = useState({});
+  // Gets the logged-in user and their profile data.
   const { currentUser, userProfile } = useAuth();
+  // Gets translation helper and current app language.
   const { t, lang } = useLanguage();
 
+  // Load community reviews once when the page first opens.
   useEffect(() => { loadFeed(); }, []);
+  // Load AI recommendations only when a user is logged in.
   useEffect(() => { if (currentUser) loadAIRecommendations(); }, [currentUser]);
 
+  // Fetches the latest reviews for the community feed.
   async function loadFeed() {
     try { setReviews(await getLatestReviews(30)); } catch (err) { console.error(err); }
     finally { setLoading(false); }
   }
 
+  // Builds user taste data, sends it to the AI endpoint, then loads recommendation covers.
   async function loadAIRecommendations() {
     setLoadingRecs(true);
     setRecError("");
     try {
+      // These arrays are used as input for the AI recommendation request.
       let library = [], userRevs = [];
       try { library = await getUserLibrary(currentUser.uid); } catch { library = []; }
       try { userRevs = await getUserReviews(currentUser.uid); } catch { userRevs = []; }
 
+      // Stop if the user has no library games or reviews to analyze.
       if (library.length === 0 && userRevs.length === 0) {
         setRecError(t("addGamesForRecs") || (lang === "ar" ? "أضف ألعاباً لاحتياجاتك للحصول على توصيات" : "Add some games to your library to get recommendations"));
         setLoadingRecs(false);
         return;
       }
 
+      // Send the user library, reviews, favorite genres, and language to the backend AI service.
       const response = await fetch(AI_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -56,12 +74,14 @@ export default function FeedPage() {
 
       if (!response.ok) throw new Error(`AI request failed: ${response.status}`);
 
+      // Convert the AI response into usable JSON data.
       const data = await response.json();
       if (data.error) { setRecError(data.error); return; }
 
       setRecommendations(data.recommendations || []);
       setAiAnalysis(data.analysis || "");
 
+      // Look up cover images for the first few recommended games using IGDB search.
       const covers = {};
       for (const rec of (data.recommendations || []).slice(0, 5)) {
         try {
@@ -80,7 +100,10 @@ export default function FeedPage() {
     }
   }
 
+  // Likes or unlikes a review, then updates the review state immediately in the UI.
   async function handleLike(rid) {
+    // Users must be logged in before liking a review.
+    // Users must be logged in before reporting a review.
     if (!currentUser) return toast.error(t("logIn"));
     try {
       const liked = await toggleReviewLike(rid, currentUser.uid);
@@ -92,8 +115,10 @@ export default function FeedPage() {
     } catch { toast.error("Failed"); }
   }
 
+  // Allows a logged-in user to report a review with a written reason.
   async function handleReport(rid) {
     if (!currentUser) return toast.error(t("logIn"));
+    // Ask the user to provide a reason before creating the report.
     const reason = window.prompt(lang === "ar" ? "سبب الإبلاغ؟" : "Reason for reporting this review?");
     if (!reason) return;
     try {
@@ -102,6 +127,7 @@ export default function FeedPage() {
     } catch { toast.error("Failed to report"); }
   }
 
+  // Show a loading spinner until the feed reviews are ready.
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>;
 
   return (
@@ -109,6 +135,7 @@ export default function FeedPage() {
       <div className="feed-layout">
         <div className="feed-main">
           <h1>{t("communityReviews")}</h1>
+          {/* Show an empty message when there are no community reviews. */}
           {reviews.length === 0 ? (
             <div className="empty-state">
               <p>{t("noReviewsYet")}</p>
@@ -116,6 +143,7 @@ export default function FeedPage() {
             </div>
           ) : (
             <div className="feed-list">
+              {/* Render each review as a feed card. */}
               {reviews.map((review) => (
                 <div key={review.id} className="feed-card">
                   <div className="feed-card-header">
@@ -135,6 +163,7 @@ export default function FeedPage() {
   <div className="feed-card-text">
     {review.textContent && <p className="feed-text">{review.textContent}</p>}
     <div className="feed-actions">
+      {/* Like button changes style if the current user already liked the review. */}
       <button
         className={`like-btn ${review.likes?.includes(currentUser?.uid) ? "liked" : ""}`}
         onClick={() => handleLike(review.id)}
@@ -155,6 +184,7 @@ export default function FeedPage() {
           )}
         </div>
 
+        {/* Only logged-in users can see the AI recommendations sidebar. */}
         {currentUser && (
           <aside className="feed-sidebar">
             <div className="sidebar-card ai-rec-card">
@@ -164,6 +194,7 @@ export default function FeedPage() {
               </div>
               <p className="ai-rec-subtitle">{t("aiRecsSubtitle")}</p>
 
+              {/* Display loading, error, or recommendation results depending on the current state. */}
               {loadingRecs ? (
                 <div className="ai-loading">
                   <div className="ai-loading-dots"><span></span><span></span><span></span></div>
@@ -180,7 +211,9 @@ export default function FeedPage() {
                 <>
                   {aiAnalysis && <div className="ai-analysis"><p>{aiAnalysis}</p></div>}
                   <div className="ai-rec-list">
+                    {/* Render every AI recommendation with cover, genre, match percentage, and reason. */}
                     {recommendations.map((rec, i) => {
+                      // Find the IGDB cover data for this recommendation if it exists.
                       const cover = recGameCovers[rec.name];
                       return (
                         <div key={i} className="ai-rec-item">

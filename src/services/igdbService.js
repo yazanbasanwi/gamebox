@@ -1,4 +1,4 @@
-const IGDB_PROXY_URL = process.env.REACT_APP_IGDB_PROXY_URL || "/api/igdb";
+const IGDB_PROXY_URL = process.env.REACT_APP_IGDB_PROXY_URL || "http://localhost:3001/api/igdb";
 
 async function igdbFetch(endpoint, body) {
   const response = await fetch(`${IGDB_PROXY_URL}/${endpoint}`, {

@@ -102,10 +102,8 @@ export default function Navbar() {
             <>
               <NavLink to="/library" className="nav-link-secondary">{t("library")}</NavLink>
               <NavLink to="/lists" className="nav-link-secondary">{t("lists")}</NavLink>
-              <NavLink to="/journal" className="nav-link-secondary">{t("journal")}</NavLink>
             </>
           )}
-          {userProfile?.role === "admin" && <NavLink to="/admin">{t("admin")}</NavLink>}
         </div>
 
         <div className="nav-right">
@@ -215,6 +213,11 @@ export default function Navbar() {
                   <Link to="/settings" onClick={() => setMenuOpen(false)}>
                     <Settings size={14} /> {lang === "ar" ? "الإعدادات" : "Settings"}
                   </Link>
+                  {userProfile?.role === "admin" && (
+                    <Link to="/admin" onClick={() => setMenuOpen(false)}>
+                      <Star size={14} /> {lang === "ar" ? "لوحة الإدارة" : "Admin Panel"}
+                    </Link>
+                  )}
                   <a href="mailto:support@gamebox.app" className="dropdown-support-link">
                     📧 {lang === "ar" ? "تواصل مع الدعم" : "Contact Support"}
                   </a>

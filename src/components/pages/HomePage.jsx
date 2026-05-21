@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
-import { Sparkles, Star, Library, ArrowRight } from "lucide-react";
+import { Sparkles, Star, Library, ArrowRight, TrendingUp } from "lucide-react";
 import { getPopularGames, getCoverURL } from "../../services/igdbService";
 
 export default function HomePage() {
@@ -155,6 +155,31 @@ export default function HomePage() {
                   <div key={i} style={{ width: 48, height: 64, borderRadius: 6, background: bg, marginLeft: i > 0 ? -10 : 0, border: "2px solid var(--bg-card)", boxShadow: "var(--shadow)" }} />
                 ))}
                 <div style={{ width: 48, height: 64, borderRadius: 6, background: "var(--bg-elevated)", marginLeft: -10, border: "2px solid var(--bg-card)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)" }}>+42</div>
+              </div>
+            </div>
+
+            {/* Feature 4 — Game Database Count */}
+            <div className="feature-card">
+              <div className="feature-icon-box">
+                <TrendingUp size={22} color="var(--accent-light)" />
+              </div>
+              <h3>{lang === "ar" ? "قاعدة بيانات ضخمة" : "Massive Game Database"}</h3>
+              <p>{lang === "ar"
+                ? "استعرض أكثر من 355,000 لعبة من مختلف الأنواع والمنصات — وهذا العدد في تزايد مستمر."
+                : "Browse over 355,000 games across every genre and platform — and the catalog keeps growing every day."
+              }</p>
+              <div className="feature-demo" style={{ textAlign: "center", padding: "0.25rem 0" }}>
+                <div style={{ fontSize: "2.6rem", fontWeight: 800, background: "linear-gradient(135deg, var(--accent-light), #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-1px", lineHeight: 1 }}>
+                  355K+
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.35rem" }}>
+                  {lang === "ar" ? "لعبة وفي تزايد مستمر" : "games & always increasing"}
+                </div>
+                <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
+                  {(lang === "ar" ? ["تقمص أدوار","إطلاق نار","استراتيجية","رياضة"] : ["RPG","FPS","Strategy","Sports"]).map(g => (
+                    <span key={g} style={{ fontSize: "0.65rem", padding: "3px 9px", borderRadius: 20, background: "rgba(124,92,252,0.12)", color: "var(--accent-light)", border: "1px solid rgba(124,92,252,0.25)" }}>{g}</span>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

@@ -1,6 +1,3 @@
-// src/components/pages/AdminPage.jsx
-// Admin Dashboard — only accessible to users with role "admin" (enforced by AdminRoute)
-// Provides tools to manage users, moderate reviews, and resolve reports
 
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
